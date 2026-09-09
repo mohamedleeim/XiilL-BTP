@@ -23,9 +23,10 @@ import {
   formatSheetDate
 } from './subscriptionPlans';
 
-// Super Admin Primary Email & Master Key
+// Super Admin Primary Email & Master Key & Official Client ID
 export const SUPER_ADMIN_EMAIL = 'mohamedleeim@gmail.com';
 export const SUPER_ADMIN_MASTER_KEY = 'XiilL-ROOT-2026-BTP';
+export const GOOGLE_OAUTH_CLIENT_ID = '432117813508-3kbhpgecu47h2h0fl0g9l96pk1894ir7.apps.googleusercontent.com';
 
 // Initialize Firebase App safely
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
@@ -80,25 +81,39 @@ export const initAuthListener = (
 };
 
 /**
+ * Helper to wait for Google Identity Services script to be loaded
+ */
+export const waitForGsi = async (timeoutMs = 3000): Promise<any> => {
+  if (typeof window === 'undefined') return undefined;
+  if ((window as any).google?.accounts?.oauth2) return (window as any).google.accounts.oauth2;
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    await new Promise(r => setTimeout(r, 100));
+    if ((window as any).google?.accounts?.oauth2) return (window as any).google.accounts.oauth2;
+  }
+  return undefined;
+};
+
+/**
  * Sign In with Google Identity Services (GSI) Token Client
  * Acts as a rock-solid client-side OAuth flow when Firebase's server userinfo endpoint is restricted
+ * or when domain is unauthorized in Firebase (e.g. GitHub Pages)
  */
 export const signInWithGsiTokenClient = async (): Promise<{
   user: { email: string | null; displayName?: string | null; photoURL?: string | null; uid?: string };
   accessToken: string;
 }> => {
+  const gsi = await waitForGsi(3500);
+  if (!gsi) {
+    throw new Error('مكتبة Google Identity Services غير جاهزة حالياً في المتصفح. يرجى إعادة تحميل الصفحة.');
+  }
+
+  const oAuthClientId = GOOGLE_OAUTH_CLIENT_ID || firebaseConfig.oAuthClientId;
+  if (!oAuthClientId) {
+    throw new Error('معرف OAuth Client ID غير متوفر.');
+  }
+
   return new Promise((resolve, reject) => {
-    const oAuthClientId = firebaseConfig.oAuthClientId;
-    const gsi = typeof window !== 'undefined' ? (window as any).google?.accounts?.oauth2 : undefined;
-
-    if (!gsi) {
-      return reject(new Error('مكتبة Google Identity Services غير جاهزة حالياً في المتصفح.'));
-    }
-
-    if (!oAuthClientId) {
-      return reject(new Error('معرف OAuth Client ID غير متوفر.'));
-    }
-
     try {
       const tokenClient = gsi.initTokenClient({
         client_id: oAuthClientId,
@@ -166,6 +181,21 @@ export const signInWithGoogle = async (): Promise<{
   try {
     isSigningIn = true;
 
+    // Check if on GitHub Pages (where Firebase authorized-domain is often unconfigured by default)
+    const isGitHubPages = typeof window !== 'undefined' && window.location.hostname.includes('github.io');
+
+    // On GitHub Pages, try GSI Token Client first for seamless instant popup with authorized JS origins
+    if (isGitHubPages) {
+      try {
+        const gsi = await waitForGsi(2000);
+        if (gsi) {
+          return await signInWithGsiTokenClient();
+        }
+      } catch (gsiDirectErr: any) {
+        console.warn('GSI direct failed on github.io, trying standard Firebase popup:', gsiDirectErr);
+      }
+    }
+
     // 1. Attempt standard Firebase popup with corrected OpenID & Workspace scopes
     try {
       const result = await signInWithPopup(auth, provider);
@@ -189,17 +219,22 @@ export const signInWithGoogle = async (): Promise<{
       console.warn('Firebase popup sign-in encountered an issue, checking GSI client fallback:', popupError);
 
       const errString = String(popupError?.message || popupError?.code || '');
-      const isCredentialOrUserinfoError =
+      const isDomainOrCredentialError =
+        errString.includes('unauthorized-domain') ||
+        errString.includes('unauthorized') ||
         errString.includes('userinfo') ||
         errString.includes('invalid-credential') ||
         errString.includes('401') ||
         errString.includes('operation-not-allowed') ||
         errString.includes('popup-blocked');
 
-      // 2. If Firebase encountered userinfo 401 or credential error, try Google Identity Services client
-      if (isCredentialOrUserinfoError && typeof window !== 'undefined' && (window as any).google?.accounts?.oauth2) {
+      // 2. If Firebase encountered unauthorized domain, userinfo 401, or credential error, fallback to GSI
+      if (isDomainOrCredentialError) {
         try {
-          return await signInWithGsiTokenClient();
+          const gsi = await waitForGsi(3000);
+          if (gsi) {
+            return await signInWithGsiTokenClient();
+          }
         } catch (gsiErr) {
           console.warn('GSI fallback also failed:', gsiErr);
         }

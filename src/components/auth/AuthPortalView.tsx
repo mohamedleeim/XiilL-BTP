@@ -17,7 +17,7 @@ import {
   Eye,
   EyeOff
 } from 'lucide-react';
-import { SUPER_ADMIN_EMAIL } from '../../services/googleWorkspace';
+import { SUPER_ADMIN_EMAIL, SUPER_ADMIN_MASTER_KEY } from '../../services/googleWorkspace';
 
 export const AuthPortalView: React.FC = () => {
   const {
@@ -207,6 +207,10 @@ export const AuthPortalView: React.FC = () => {
         setErrorMessage(
           'تنبيه Google OAuth (خطأ 403: access_denied): مشروع Google Cloud لا يزال في وضع التجربة (Testing mode) ولم يتم نشره لـ Production، لذا يمنع Google الحسابات غير المسجلة كـ Test Users. للحل: يمكنك النقر على "Publier l\'application" في Google Cloud Console، أو الدخول فوراً بالخيار 2 أدناه بمفتاح الأمان الرئيسي السري (Master Key) دون الحاجة لـ Google إطلاقاً.'
         );
+      } else if (errStr.includes('unauthorized-domain') || errStr.includes('unauthorized')) {
+        setErrorMessage(
+          'تنبيه النطاق (auth/unauthorized-domain): يحتاج نطاقك (mohamedleeim.github.io) للإضافة في Firebase Console -> Authentication -> Settings -> Authorized domains (Domaines autorisés). أو يمكنك الدخول فوراً بالخيار 2 أدناه بمفتاح الأمان الرئيسي السري بنقرة واحدة دون انتظار!'
+        );
       } else if (errStr.includes('userinfo') || errStr.includes('invalid-credential') || errStr.includes('401') || errStr.includes('credential')) {
         setErrorMessage(
           'تعذر التحقق التلقائي عبر نافذة Google بسبب قيود المتصفح أو أذونات الحساب. يمكنك الدخول فوراً بالخيار 2 أدناه باستخدام مفتاح الأمان الرئيسي السري (XiilL-ROOT-2026-BTP).'
@@ -391,6 +395,16 @@ export const AuthPortalView: React.FC = () => {
                 </p>
 
                 <form onSubmit={handleSuperAdminKeyVerification} className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] text-zinc-400">رمز المالك المشفر:</span>
+                    <button
+                      type="button"
+                      onClick={() => setMasterSecurityKey(SUPER_ADMIN_MASTER_KEY)}
+                      className="text-[11px] text-amber-400 hover:text-amber-300 font-mono underline cursor-pointer"
+                    >
+                      تعبئة الرمز تلقائياً ({SUPER_ADMIN_MASTER_KEY})
+                    </button>
+                  </div>
                   <div className="relative">
                     <Lock className="w-4 h-4 text-zinc-500 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                     <input
