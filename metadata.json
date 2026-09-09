@@ -1,0 +1,6 @@
+{
+  "name": "XiilL BTP — إدارة ورش ومقاولات البناء",
+  "description": "منظومة XiilL BTP لإدارة أوراش البناء والمقاولات في المغرب (بوابة دخول موحدة للمالك العام mohamedleeim@gmail.com، فضاءات عمل مستقلة للمدراء العامين والأدمينات بكود Admin ID، ولوحة إدارة خاصة بمشرفي الأوراش برمز PIN، مع ربط سحابي متكامل بـ Google Sheets & Drive).",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
