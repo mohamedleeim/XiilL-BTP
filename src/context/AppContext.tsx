@@ -238,7 +238,7 @@ interface AppContextType {
   switchActiveAdmin: (adminId: string | null) => void;
   loginWithGoogleAdmin: (adminIdCode?: string) => Promise<{ success: boolean; message: string; role: 'super_admin' | 'admin' }>;
   logoutGoogleAdmin: () => Promise<void>;
-  registerNewAdmin: (data: { email: string; name: string; companyName?: string; phone?: string; notes?: string }) => Promise<AdminAccount>;
+  registerNewAdmin: (data: { email: string; name: string; companyName?: string; phone?: string; notes?: string; subscriptionTier?: SubscriptionTier }) => Promise<AdminAccount>;
   updateAdminStatus: (adminId: string, status: 'active' | 'suspended') => void;
   deleteAdmin: (adminId: string) => void;
   
@@ -2304,9 +2304,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     companyName?: string;
     phone?: string;
     notes?: string;
+    subscriptionTier?: SubscriptionTier;
   }): Promise<AdminAccount> => {
     const existingIds = state.adminAccounts.map(a => a.id);
     const newId = generateUniqueAdminId(existingIds);
+
+    let sub = createDefaultTrialSubscription();
+    if (data.subscriptionTier === 'monthly') sub = createMonthlySubscription();
+    if (data.subscriptionTier === 'annual') sub = createAnnualSubscription();
+
     const newAdmin: AdminAccount = {
       id: newId,
       email: data.email.trim().toLowerCase(),
@@ -2317,7 +2323,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       status: 'active',
       createdAt: new Date().toISOString(),
       notes: data.notes?.trim(),
-      subscription: createDefaultTrialSubscription()
+      subscription: sub
     };
 
     setState(prev => ({

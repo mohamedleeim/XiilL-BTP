@@ -21,10 +21,19 @@ import {
   Lock,
   Eye,
   Sliders,
-  Share2
+  Share2,
+  Crown,
+  Zap,
+  Calendar
 } from 'lucide-react';
 import { generateUniqueAdminId, SUPER_ADMIN_EMAIL } from '../../services/googleWorkspace';
-import { SupervisorPermissions } from '../../types';
+import { SupervisorPermissions, SubscriptionTier } from '../../types';
+import { 
+  formatTierLabel, 
+  computeAutoStatus, 
+  formatSheetDate, 
+  calculateDaysRemaining 
+} from '../../services/subscriptionPlans';
 
 export const SuperAdminHubView: React.FC = () => {
   const { 
@@ -34,6 +43,7 @@ export const SuperAdminHubView: React.FC = () => {
     registerNewAdmin, 
     updateAdminStatus, 
     deleteAdmin,
+    updateAdminSubscription,
     superAdminMode,
     setSuperAdminMode,
     switchActiveAdmin,
@@ -54,6 +64,7 @@ export const SuperAdminHubView: React.FC = () => {
   const [newCompanyName, setNewCompanyName] = useState('');
   const [newPhone, setNewPhone] = useState('');
   const [newNotes, setNewNotes] = useState('');
+  const [newTier, setNewTier] = useState<SubscriptionTier>('trial_3days');
   const [generatedId, setGeneratedId] = useState(() => generateUniqueAdminId(adminAccounts.map(a => a.id)));
   
   // UI States
@@ -122,7 +133,8 @@ export const SuperAdminHubView: React.FC = () => {
         name: newName.trim(),
         companyName: newCompanyName.trim() || undefined,
         phone: newPhone.trim() || undefined,
-        notes: newNotes.trim() || undefined
+        notes: newNotes.trim() || undefined,
+        subscriptionTier: newTier
       });
 
       setNotification({
@@ -421,6 +433,54 @@ export const SuperAdminHubView: React.FC = () => {
               </div>
             </div>
 
+            {/* Subscription Tier Selection */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-zinc-300 flex items-center justify-between">
+                <span>نوع الباقة الممنوحة للأدمين:</span>
+                <span className="text-[10px] text-amber-400 font-normal">تسجل تلقائياً في ورقة Admin_Registry</span>
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setNewTier('trial_3days')}
+                  className={`p-2 rounded-xl border text-center transition-all cursor-pointer ${
+                    newTier === 'trial_3days'
+                      ? 'bg-amber-500/20 border-amber-500 text-amber-300 font-bold'
+                      : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                  }`}
+                >
+                  <span className="block text-xs">تجريبية 3 أيام</span>
+                  <span className="block text-[10px] text-zinc-400 mt-0.5">مجانية للتجربة</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setNewTier('monthly')}
+                  className={`p-2 rounded-xl border text-center transition-all cursor-pointer ${
+                    newTier === 'monthly'
+                      ? 'bg-amber-500/20 border-amber-500 text-amber-300 font-bold'
+                      : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                  }`}
+                >
+                  <span className="block text-xs">باقة شهرية</span>
+                  <span className="block text-[10px] text-emerald-400 mt-0.5">290 د.م / شهر</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setNewTier('annual')}
+                  className={`p-2 rounded-xl border text-center transition-all cursor-pointer ${
+                    newTier === 'annual'
+                      ? 'bg-amber-500/20 border-amber-500 text-amber-300 font-bold'
+                      : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                  }`}
+                >
+                  <span className="block text-xs">باقة سنوية</span>
+                  <span className="block text-[10px] text-amber-400 mt-0.5 font-semibold">خصم 25%</span>
+                </button>
+              </div>
+            </div>
+
             {/* Notes */}
             <div className="space-y-1">
               <label className="text-xs font-semibold text-zinc-300">ملاحظات إضافية (أوراش، مدينة، الخ)</label>
@@ -560,8 +620,9 @@ export const SuperAdminHubView: React.FC = () => {
                 <th className="py-2.5 px-3">كود الأدمين (Admin ID)</th>
                 <th className="py-2.5 px-3">الاسم / المقاولة</th>
                 <th className="py-2.5 px-3">البريد الإلكتروني</th>
-                <th className="py-2.5 px-3">تاريخ التسجيل</th>
-                <th className="py-2.5 px-3">الحالة</th>
+                <th className="py-2.5 px-3">نوع الباقة</th>
+                <th className="py-2.5 px-3">تاريخ البدء / الانتهاء</th>
+                <th className="py-2.5 px-3">الحالة التلقائية</th>
                 <th className="py-2.5 px-3 text-center">إجراءات ودعوة</th>
               </tr>
             </thead>
@@ -569,6 +630,10 @@ export const SuperAdminHubView: React.FC = () => {
               {adminAccounts.map((admin) => {
                 const isCurrent = currentAdmin?.id === admin.id;
                 const isRoot = admin.role === 'super_admin';
+                const sub = admin.subscription;
+                const autoStatus = computeAutoStatus(sub, admin.status);
+                const isExpired = autoStatus === 'expired';
+                const daysRemaining = calculateDaysRemaining(sub);
 
                 return (
                   <tr key={admin.id} className={`hover:bg-zinc-800/40 transition-colors ${isCurrent ? 'bg-amber-500/5' : ''}`}>
@@ -602,28 +667,87 @@ export const SuperAdminHubView: React.FC = () => {
                       {admin.email}
                     </td>
 
-                    {/* Date */}
-                    <td className="py-3 px-3 text-zinc-400 font-mono text-[10px]">
-                      {admin.createdAt ? new Date(admin.createdAt).toLocaleDateString('ar-MA') : '—'}
+                    {/* Subscription Tier & Quick Switch */}
+                    <td className="py-3 px-3">
+                      {isRoot ? (
+                        <span className="px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 text-[10px] font-bold border border-amber-500/30">
+                          صلاحية دائمة
+                        </span>
+                      ) : (
+                        <div className="flex items-center gap-1.5">
+                          <select
+                            value={sub?.tier || 'trial_3days'}
+                            onChange={(e) => updateAdminSubscription(admin.id, e.target.value as SubscriptionTier)}
+                            className="text-[10px] bg-zinc-900 border border-zinc-700 text-amber-300 rounded px-1.5 py-1 font-medium focus:outline-none focus:border-amber-500 cursor-pointer"
+                          >
+                            <option value="trial_3days">تجريبية (3 أيام)</option>
+                            <option value="monthly">شهرية (290 د.م)</option>
+                            <option value="annual">سنوية (خصم 25%)</option>
+                          </select>
+                        </div>
+                      )}
                     </td>
 
-                    {/* Status */}
+                    {/* Dates & countdown */}
+                    <td className="py-3 px-3 text-zinc-300 font-mono text-[10px]">
+                      {isRoot ? (
+                        <span className="text-zinc-500">غير محددة</span>
+                      ) : sub ? (
+                        <div>
+                          <div className="flex items-center gap-1 text-zinc-400">
+                            <span>بدء:</span>
+                            <span>{formatSheetDate(sub.startDate) || '—'}</span>
+                          </div>
+                          <div className="flex items-center gap-1 mt-0.5 font-semibold">
+                            <span className={isExpired ? 'text-rose-400' : 'text-zinc-300'}>انتهاء:</span>
+                            <span className={isExpired ? 'text-rose-400' : 'text-zinc-200'}>{formatSheetDate(sub.endDate) || '—'}</span>
+                          </div>
+                          {!isExpired && (
+                            <span className="text-[9px] text-amber-400/90 block">
+                              (متبقي {daysRemaining} {daysRemaining === 1 ? 'يوم' : 'أيام'})
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-zinc-500">—</span>
+                      )}
+                    </td>
+
+                    {/* Automatic Status */}
                     <td className="py-3 px-3">
                       {isRoot ? (
                         <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-bold">
                           الأدمين الكبير
                         </span>
                       ) : (
-                        <button
-                          onClick={() => updateAdminStatus(admin.id, admin.status === 'active' ? 'suspended' : 'active')}
-                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold cursor-pointer transition-colors ${
-                            admin.status === 'active' 
-                              ? 'bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25' 
-                              : 'bg-red-500/15 text-red-400 hover:bg-red-500/25'
-                          }`}
-                        >
-                          {admin.status === 'active' ? 'نشط' : 'معطل'}
-                        </button>
+                        <div className="flex flex-col gap-1 items-start">
+                          <button
+                            onClick={() => updateAdminStatus(admin.id, admin.status === 'suspended' ? 'active' : 'suspended')}
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold cursor-pointer transition-colors ${
+                              admin.status === 'suspended'
+                                ? 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                                : isExpired
+                                ? 'bg-rose-500/15 text-rose-400 border border-rose-500/30'
+                                : 'bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25'
+                            }`}
+                            title={admin.status === 'suspended' ? 'الحساب مجمد يدوياً' : isExpired ? 'انتهت فترة الاشتراك تلقائياً' : 'الحساب نشط'}
+                          >
+                            {admin.status === 'suspended' 
+                              ? 'معطل (يدوي)' 
+                              : isExpired 
+                              ? 'منتهي الصلاحية (تلقائي)' 
+                              : 'نشط (تلقائي)'}
+                          </button>
+                          {isExpired && (
+                            <button
+                              onClick={() => updateAdminSubscription(admin.id, 'monthly')}
+                              className="text-[9px] text-amber-400 hover:underline flex items-center gap-0.5"
+                            >
+                              <Zap className="w-2.5 h-2.5" />
+                              <span>تجديد شهر</span>
+                            </button>
+                          )}
+                        </div>
                       )}
                     </td>
 

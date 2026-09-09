@@ -12,8 +12,16 @@ import {
   AdminAccount, 
   AppState, 
   DriveFileItem, 
-  ChatSpaceItem 
+  ChatSpaceItem,
+  SubscriptionInfo 
 } from '../types';
+import {
+  formatTierLabel,
+  parseTierLabel,
+  computeAutoStatus,
+  formatAutoStatusDisplay,
+  formatSheetDate
+} from './subscriptionPlans';
 
 // Super Admin Primary Email & Master Key
 export const SUPER_ADMIN_EMAIL = 'mohamedleeim@gmail.com';
@@ -288,9 +296,21 @@ export interface BtpSheetDefinition {
 export const BTP_STANDARD_SHEETS: BtpSheetDefinition[] = [
   {
     title: 'Admin_Registry',
-    label: 'سجل الأدمين والمشرفين',
-    description: 'Admin & Utilisateurs du Chantier',
-    headers: ['Admin ID (كود الأدمين)', 'Email (البريد)', 'Name (الاسم)', 'Role (الدور)', 'Status (الحالة)', 'CreatedAt (تاريخ التسجيل)', 'LastLogin (آخر دخول)', 'Notes (ملاحظات)'],
+    label: 'سجل الأدمين والاشتراكات',
+    description: 'Admin, Abonnements & Utilisateurs du Chantier',
+    headers: [
+      'Admin ID (كود الأدمين)',
+      'Email (البريد)',
+      'Name (الاسم)',
+      'Role (الدور)',
+      'Type Abonnement (نوع الباقة)',
+      'Date Début (تاريخ بدأ الباقة)',
+      'Date Fin (تاريخ إنتهاء الباقة)',
+      'Status (الحالة التلقائية)',
+      'CreatedAt (تاريخ التسجيل)',
+      'LastLogin (آخر دخول)',
+      'Notes (ملاحظات)'
+    ],
     tabColor: { red: 0.95, green: 0.65, blue: 0.1 }
   },
   {
@@ -704,21 +724,31 @@ export const ensureAdminRegistrySheet = async (spreadsheetId: string) => {
       });
     }
 
-    // 2. Set headers if empty
-    const checkValuesRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Admin_Registry!A1:H1`, {
+    // 2. Set headers if empty or upgrade if less than 11 columns
+    const checkValuesRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Admin_Registry!A1:K1`, {
       headers: { Authorization: `Bearer ${token}` }
     });
     const checkValues = await checkValuesRes.json();
 
-    if (!checkValues.values || checkValues.values.length === 0) {
-      const headers = [
-        ['Admin ID (كود الأدمين)', 'Email (البريد)', 'Name (الاسم)', 'Role (الدور)', 'Status (الحالة)', 'CreatedAt (تاريخ التسجيل)', 'LastLogin (آخر دخول)', 'Notes (ملاحظات)']
-      ];
+    const currentHeaders = [
+      'Admin ID (كود الأدمين)',
+      'Email (البريد)',
+      'Name (الاسم)',
+      'Role (الدور)',
+      'Type Abonnement (نوع الباقة)',
+      'Date Début (تاريخ بدأ الباقة)',
+      'Date Fin (تاريخ إنتهاء الباقة)',
+      'Status (الحالة التلقائية)',
+      'CreatedAt (تاريخ التسجيل)',
+      'LastLogin (آخر دخول)',
+      'Notes (ملاحظات)'
+    ];
 
-      await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Admin_Registry!A1:H1?valueInputOption=USER_ENTERED`, {
+    if (!checkValues.values || checkValues.values.length === 0 || checkValues.values[0].length < 11) {
+      await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Admin_Registry!A1:K1?valueInputOption=USER_ENTERED`, {
         method: 'PUT',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ values: headers })
+        body: JSON.stringify({ values: [currentHeaders] })
       });
     }
   } catch (err) {
@@ -738,18 +768,25 @@ export const saveAdminToRegistrySheet = async (
 
   await ensureAdminRegistrySheet(spreadsheetId);
 
+  // Auto calculate status based on subscription end date
+  const autoStatus = computeAutoStatus(admin.subscription, admin.status);
+  const statusDisplay = formatAutoStatusDisplay(autoStatus, admin.subscription?.tier);
+
   const row = [
     admin.id,
     admin.email,
     admin.name,
     admin.role,
-    admin.status,
+    formatTierLabel(admin.subscription?.tier),
+    formatSheetDate(admin.subscription?.startDate),
+    formatSheetDate(admin.subscription?.endDate),
+    statusDisplay,
     admin.createdAt,
     admin.lastLoginAt || 'لم يدخل بعد',
     admin.notes || (admin.companyName ? `مقاول: ${admin.companyName}` : '')
   ];
 
-  const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Admin_Registry!A:H:append?valueInputOption=USER_ENTERED`, {
+  const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Admin_Registry!A:K:append?valueInputOption=USER_ENTERED`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -774,7 +811,7 @@ export const fetchAdminRegistryFromSheet = async (
   if (!token) return [];
 
   try {
-    const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Admin_Registry!A2:H100`, {
+    const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Admin_Registry!A2:K100`, {
       headers: { Authorization: `Bearer ${token}` }
     });
 
@@ -782,16 +819,39 @@ export const fetchAdminRegistryFromSheet = async (
     const data = await res.json();
     if (!data.values) return [];
 
-    return data.values.map((row: string[]) => ({
-      id: row[0] || '',
-      email: (row[1] || '').trim().toLowerCase(),
-      name: row[2] || '',
-      role: (row[3] === 'super_admin' ? 'super_admin' : 'admin') as 'super_admin' | 'admin',
-      status: (row[4] === 'suspended' ? 'suspended' : 'active') as 'active' | 'suspended',
-      createdAt: row[5] || new Date().toISOString(),
-      lastLoginAt: row[6],
-      notes: row[7] || ''
-    })).filter((a: AdminAccount) => Boolean(a.id && a.email));
+    return data.values.map((row: string[]) => {
+      const isExtended = row.length >= 10;
+      
+      let tier = isExtended ? parseTierLabel(row[4]) : 'trial_3days';
+      let startDate = isExtended && row[5] ? new Date(row[5]).toISOString() : new Date().toISOString();
+      let endDate = isExtended && row[6] ? new Date(row[6]).toISOString() : new Date(Date.now() + 3 * 86400000).toISOString();
+      let rawStatus = isExtended ? row[7] : row[4];
+
+      const subscription: SubscriptionInfo = {
+        tier: tier as any,
+        startDate,
+        endDate,
+        status: 'active',
+        price: tier === 'annual' ? 2610 : tier === 'monthly' ? 290 : 0
+      };
+
+      const autoStatus = computeAutoStatus(subscription, rawStatus);
+      if (autoStatus === 'expired') {
+        subscription.status = 'expired';
+      }
+
+      return {
+        id: row[0] || '',
+        email: (row[1] || '').trim().toLowerCase(),
+        name: row[2] || '',
+        role: (row[3] === 'super_admin' ? 'super_admin' : 'admin') as 'super_admin' | 'admin',
+        status: autoStatus,
+        subscription,
+        createdAt: (isExtended ? row[8] : row[5]) || new Date().toISOString(),
+        lastLoginAt: isExtended ? row[9] : row[6],
+        notes: (isExtended ? row[10] : row[7]) || ''
+      };
+    }).filter((a: AdminAccount) => Boolean(a.id && a.email));
   } catch (err) {
     console.error('Failed to read Admin Registry from sheet:', err);
     return [];
@@ -940,6 +1000,42 @@ export const syncAllDataToGoogleSheets = async (
   await updateTab('Achats_Fournisseurs', 'المشتريات_والموردين', purchasesData);
   await updateTab('Depenses_Chantier', 'المصاريف_اليومية', expensesData);
   await updateTab('Decomptes_Clients', 'دفعات_الزبناء_Décomptes', clientPaymentsData);
+
+  // Synchronize Admin_Registry with subscription plans and automatic statuses
+  if (state.adminAccounts && state.adminAccounts.length > 0) {
+    const adminRegistryData = [
+      [
+        'Admin ID (كود الأدمين)',
+        'Email (البريد)',
+        'Name (الاسم)',
+        'Role (الدور)',
+        'Type Abonnement (نوع الباقة)',
+        'Date Début (تاريخ بدأ الباقة)',
+        'Date Fin (تاريخ إنتهاء الباقة)',
+        'Status (الحالة التلقائية)',
+        'CreatedAt (تاريخ التسجيل)',
+        'LastLogin (آخر دخول)',
+        'Notes (ملاحظات)'
+      ],
+      ...state.adminAccounts.map(a => {
+        const autoStatus = computeAutoStatus(a.subscription, a.status);
+        return [
+          a.id,
+          a.email,
+          a.name,
+          a.role,
+          formatTierLabel(a.subscription?.tier),
+          formatSheetDate(a.subscription?.startDate),
+          formatSheetDate(a.subscription?.endDate),
+          formatAutoStatusDisplay(autoStatus, a.subscription?.tier),
+          a.createdAt,
+          a.lastLoginAt || 'لم يدخل بعد',
+          a.notes || ''
+        ];
+      })
+    ];
+    await updateTab('Admin_Registry', 'سجل_الأدمين', adminRegistryData);
+  }
 
   const totalRows = projects.length + cpsArticles.length + workers.length + purchases.length + expenses.length + clientPayments.length;
 

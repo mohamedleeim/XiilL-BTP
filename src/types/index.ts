@@ -94,7 +94,7 @@ export interface AdminAccount {
   companyName?: string;
   phone?: string;
   role: 'super_admin' | 'admin';
-  status: 'active' | 'pending' | 'suspended';
+  status: 'active' | 'pending' | 'suspended' | 'expired';
   createdAt: string;
   lastLoginAt?: string;
   notes?: string;

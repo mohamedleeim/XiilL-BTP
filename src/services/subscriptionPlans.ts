@@ -197,3 +197,82 @@ export const getSubscriptionStatusText = (sub?: SubscriptionInfo): {
     colorClass: 'text-emerald-400 bg-emerald-500/15 border-emerald-500/30'
   };
 };
+
+/**
+ * Format plan tier for Google Sheets column
+ */
+export const formatTierLabel = (tier?: SubscriptionTier): string => {
+  switch (tier) {
+    case 'trial_3days':
+      return 'باقة تجريبية 3 أيام (Essai 3J)';
+    case 'monthly':
+      return 'باقة شهرية (Mensuel)';
+    case 'annual':
+      return 'باقة سنوية - خصم 25% (Annuel -25%)';
+    default:
+      return 'باقة تجريبية 3 أيام (Essai 3J)';
+  }
+};
+
+/**
+ * Parse tier label from Google Sheets
+ */
+export const parseTierLabel = (raw?: string): SubscriptionTier => {
+  if (!raw) return 'trial_3days';
+  const val = raw.toLowerCase();
+  if (val.includes('annuel') || val.includes('سنو') || val.includes('annual')) {
+    return 'annual';
+  }
+  if (val.includes('mensuel') || val.includes('شهر') || val.includes('monthly')) {
+    return 'monthly';
+  }
+  return 'trial_3days';
+};
+
+/**
+ * Compute auto status based on subscription dates
+ * Automatically converts status to 'expired' when the end date has passed
+ */
+export const computeAutoStatus = (
+  sub?: SubscriptionInfo,
+  currentStatus?: string
+): 'active' | 'expired' | 'suspended' => {
+  if (currentStatus === 'suspended') return 'suspended';
+  if (!sub || !sub.endDate) return 'active';
+
+  const endMs = new Date(sub.endDate).getTime();
+  const nowMs = Date.now();
+
+  if (nowMs > endMs) {
+    return 'expired';
+  }
+  return 'active';
+};
+
+/**
+ * Display label for status in Google Sheets & UI
+ */
+export const formatAutoStatusDisplay = (
+  status: 'active' | 'expired' | 'suspended' | 'pending',
+  tier?: SubscriptionTier
+): string => {
+  if (status === 'suspended') return 'معلق (Suspendu)';
+  if (status === 'expired') return 'منتهي (Expiré)';
+  if (tier === 'trial_3days') return 'نشط - فترة تجريبية (Essai Actif)';
+  return 'نشط (Actif)';
+};
+
+/**
+ * Format date for Google Sheets column (YYYY-MM-DD)
+ */
+export const formatSheetDate = (isoStr?: string): string => {
+  if (!isoStr) return '';
+  try {
+    const d = new Date(isoStr);
+    if (isNaN(d.getTime())) return isoStr;
+    return d.toISOString().split('T')[0];
+  } catch {
+    return isoStr;
+  }
+};
+
