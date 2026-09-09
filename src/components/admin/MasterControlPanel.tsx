@@ -32,9 +32,20 @@ import {
   Download,
   UploadCloud,
   X,
-  AlertCircle
+  AlertCircle,
+  CheckCheck,
+  ListChecks,
+  SlidersHorizontal,
+  Table
 } from 'lucide-react';
-import { generateUniqueAdminId, SUPER_ADMIN_EMAIL } from '../../services/googleWorkspace';
+import {
+  generateUniqueAdminId,
+  SUPER_ADMIN_EMAIL,
+  KNOWN_MASTER_SPREADSHEET_ID,
+  KNOWN_MASTER_SPREADSHEET_TITLE,
+  SheetValidationResult,
+  BTP_STANDARD_SHEETS
+} from '../../services/googleWorkspace';
 import { AdminAccount } from '../../types';
 
 interface MasterControlPanelProps {
@@ -50,6 +61,7 @@ export const MasterControlPanel: React.FC<MasterControlPanelProps> = ({ onInspec
     deleteAdmin,
     workspaceConfig,
     createMasterSheet,
+    inspectAndConnectMasterSheet,
     syncToGoogleSheets,
     backupToDrive,
     exportBackupJson,
@@ -79,6 +91,12 @@ export const MasterControlPanel: React.FC<MasterControlPanelProps> = ({ onInspec
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [copiedInvite, setCopiedInvite] = useState<string | null>(null);
+
+  // Sheets Verification & Schema State
+  const [isInspecting, setIsInspecting] = useState(false);
+  const [sheetValidation, setSheetValidation] = useState<SheetValidationResult | null>(null);
+  const [manualSheetInput, setManualSheetInput] = useState('');
+  const [isEditingSheetUrl, setIsEditingSheetUrl] = useState(false);
 
   // Filtered tenants (exclude root super admin from customer list)
   const customerTenants = useMemo(() => {
@@ -203,14 +221,57 @@ export const MasterControlPanel: React.FC<MasterControlPanelProps> = ({ onInspec
     setNotification(null);
     try {
       const res = await createMasterSheet('XiilL BTP — المنظومة المركزية للأوراش');
+      if (res.validation) {
+        setSheetValidation(res.validation);
+      }
       setNotification({
         type: 'success',
-        text: `تم إنشاء ملف Google Sheets المركزي بنجاح مع ورقة Admin_Registry لكافة التراخيص!`
+        text: res.isExisting
+          ? `تم العثور على الملف المعتمد (${res.title || 'XiilL BTP'}) وتأكيد تطابق الأوراق ورؤوس الأعمدة بنجاح!`
+          : `تم إنشاء وتهيئة ملف Google Sheets المركزي بنجاح مع كافة الأوراق ورؤوس الأعمدة ورقة Admin_Registry!`
       });
     } catch (err: any) {
-      setNotification({ type: 'error', text: err?.message || 'فشل إنشاء جدول Google Sheets المركزي.' });
+      setNotification({ type: 'error', text: err?.message || 'فشل فحص أو إنشاء جدول Google Sheets المركزي.' });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleInspectTabsAndHeaders = async () => {
+    setIsInspecting(true);
+    setNotification(null);
+    try {
+      const val = await inspectAndConnectMasterSheet(workspaceConfig.masterSheetId || KNOWN_MASTER_SPREADSHEET_ID);
+      setSheetValidation(val);
+      setNotification({
+        type: 'success',
+        text: val.message
+      });
+    } catch (err: any) {
+      setNotification({ type: 'error', text: err?.message || 'فشل فحص الأوراق ورؤوس الأعمدة في Google Sheets.' });
+    } finally {
+      setIsInspecting(false);
+    }
+  };
+
+  const handleSaveManualSheetId = async () => {
+    const trimmed = manualSheetInput.trim();
+    if (!trimmed) return;
+    setIsInspecting(true);
+    setNotification(null);
+    try {
+      const val = await inspectAndConnectMasterSheet(trimmed);
+      setSheetValidation(val);
+      setIsEditingSheetUrl(false);
+      setManualSheetInput('');
+      setNotification({
+        type: 'success',
+        text: `تم ربط الملف المحدد بنجاح والتحقق من الأوراق ورؤوس الأعمدة: ${val.message}`
+      });
+    } catch (err: any) {
+      setNotification({ type: 'error', text: err?.message || 'تعذر فحص أو ربط ملف Google Sheets المدخل.' });
+    } finally {
+      setIsInspecting(false);
     }
   };
 
@@ -796,60 +857,165 @@ export const MasterControlPanel: React.FC<MasterControlPanelProps> = ({ onInspec
           <div className="space-y-6">
             
             {/* Master Sheet Section */}
-            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 sm:p-6 shadow-xl space-y-4">
+            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 sm:p-6 shadow-xl space-y-5">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-800 pb-4">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
                     <FileSpreadsheet className="w-5 h-5" />
                   </div>
                   <div>
-                    <h3 className="text-base font-extrabold text-white">
-                      جدول Google Sheets المركزي (Master Registry & Multi-Tenants)
+                    <h3 className="text-base font-extrabold text-white flex items-center gap-2">
+                      <span>جدول Google Sheets المركزي (Master Registry & Multi-Tenants)</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">
+                        المنظومة المركزية
+                      </span>
                     </h3>
                     <p className="text-xs text-zinc-400 mt-0.5">
-                      يتم فيه تسجيل وتخزين كافة المدراء العامين وتراخيصهم تلقائياً في ورقة <span className="text-emerald-400 font-mono">Admin_Registry</span>
+                      يتم فيه تسجيل وتخزين كافة المدراء العامين وتراخيصهم تلقائياً في ورقة <span className="text-emerald-400 font-mono font-bold">Admin_Registry</span> وفحص الأوراق الثمانية
                     </p>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  {!workspaceConfig.masterSheetId ? (
-                    <button
-                      onClick={handleCreateMasterSheet}
-                      disabled={loading}
-                      className="py-2 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-2 transition-colors disabled:opacity-50"
-                    >
-                      {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-                      <span>إنشاء Google Sheets المركزي الآن</span>
-                    </button>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <a
-                        href={workspaceConfig.masterSheetUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="py-2 px-4 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white text-xs font-bold flex items-center gap-2 border border-zinc-700 transition-colors"
-                      >
-                        <ExternalLink className="w-4 h-4 text-emerald-400" />
-                        <span>فتح الجدول في Google Sheets</span>
-                      </a>
-                      <button
-                        onClick={handleSyncToSheets}
-                        disabled={loading}
-                        className="py-2 px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 transition-colors disabled:opacity-50"
-                      >
-                        <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-                        <span>مزامنة كافة المشتركين</span>
-                      </button>
-                    </div>
-                  )}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    onClick={handleInspectTabsAndHeaders}
+                    disabled={isInspecting || loading}
+                    className="py-2 px-3.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-amber-400 text-xs font-bold flex items-center gap-1.5 border border-zinc-700 transition-colors disabled:opacity-50 cursor-pointer"
+                    title="التأكد من وجود الأوراق ورؤوس الأعمدة بدون تغيير البيانات"
+                  >
+                    {isInspecting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ListChecks className="w-3.5 h-3.5" />}
+                    <span>فحص الأوراق ورؤوس الأعمدة</span>
+                  </button>
+
+                  <a
+                    href={workspaceConfig.masterSheetUrl || `https://docs.google.com/spreadsheets/d/${workspaceConfig.masterSheetId || KNOWN_MASTER_SPREADSHEET_ID}/edit`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="py-2 px-3.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white text-xs font-bold flex items-center gap-1.5 border border-zinc-700 transition-colors"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>فتح في Sheets</span>
+                  </a>
+
+                  <button
+                    onClick={handleSyncToSheets}
+                    disabled={loading || isInspecting}
+                    className="py-2 px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+                    <span>مزامنة كافة المشتركين</span>
+                  </button>
+
+                  <button
+                    onClick={() => setIsEditingSheetUrl(!isEditingSheetUrl)}
+                    className="py-2 px-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs flex items-center gap-1 border border-zinc-700"
+                    title="تعديل رابط الملف أو إدخال معرف مخصص"
+                  >
+                    <SlidersHorizontal className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               </div>
 
-              {workspaceConfig.lastSheetsSync && (
-                <div className="text-xs text-zinc-400 flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                  <span>آخر مزامنة ناجحة: {new Date(workspaceConfig.lastSheetsSync).toLocaleString('ar-MA')}</span>
+              {/* Master Sheet Active Info Bar */}
+              <div className="p-4 rounded-xl bg-zinc-950 border border-zinc-800 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-zinc-400">الملف المعتمد:</span>
+                    <span className="text-white font-bold">{workspaceConfig.masterSheetTitle || KNOWN_MASTER_SPREADSHEET_TITLE}</span>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                      معتمد رسمياً
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 text-zinc-400 font-mono text-[11px]">
+                    <span>المعرف (ID):</span>
+                    <span className="text-zinc-200 select-all">{workspaceConfig.masterSheetId || KNOWN_MASTER_SPREADSHEET_ID}</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 text-[11px] text-zinc-400">
+                  {workspaceConfig.lastSheetsSync && (
+                    <div className="flex items-center gap-1.5 text-emerald-400">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>آخر مزامنة: {new Date(workspaceConfig.lastSheetsSync).toLocaleString('ar-MA')}</span>
+                    </div>
+                  )}
+                  <button
+                    onClick={handleCreateMasterSheet}
+                    disabled={loading || isInspecting}
+                    className="text-amber-400 hover:text-amber-300 underline font-medium cursor-pointer"
+                    title="يبحث في Google Drive أولاً عن الملف الأصلي ثم يربطه بدلاً من التكرار"
+                  >
+                    إعادة الكشف في Drive
+                  </button>
+                </div>
+              </div>
+
+              {/* Manual URL Input Bar (toggleable) */}
+              {isEditingSheetUrl && (
+                <div className="p-3.5 rounded-xl bg-zinc-950 border border-amber-500/30 space-y-2">
+                  <label className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                    <SlidersHorizontal className="w-3.5 h-3.5" />
+                    <span>تغيير أو ربط رابط ملف Google Sheets يدوي:</span>
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      placeholder="الصق رابط أو معرف الملف (مثال: spreadsheets/d/1KCWDJihciRXulv1n8NwEy668N_oiQn7CCVewRurto5k/)"
+                      value={manualSheetInput}
+                      onChange={(e) => setManualSheetInput(e.target.value)}
+                      className="flex-1 px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-700 text-white text-xs font-mono focus:border-amber-500 focus:outline-none"
+                    />
+                    <button
+                      onClick={handleSaveManualSheetId}
+                      disabled={isInspecting || !manualSheetInput.trim()}
+                      className="py-2 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-xs flex items-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer"
+                    >
+                      {isInspecting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCheck className="w-3.5 h-3.5" />}
+                      <span>ربط وفحص الأوراق</span>
+                    </button>
+                    <button
+                      onClick={() => setIsEditingSheetUrl(false)}
+                      className="py-2 px-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs"
+                    >
+                      إلغاء
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Inspection Results Display */}
+              {sheetValidation && (
+                <div className="p-4 rounded-xl bg-zinc-950 border border-zinc-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                      <span className="text-xs font-bold text-white">نتائج فحص هيكل الأوراق ورؤوس الأعمدة:</span>
+                    </div>
+                    <span className="text-[11px] text-emerald-400 font-medium">{sheetValidation.message}</span>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {(sheetValidation.tabStatuses || []).map(tab => (
+                      <div
+                        key={tab.title}
+                        className="p-2.5 rounded-lg bg-zinc-900/80 border border-zinc-800 flex items-center justify-between text-xs"
+                      >
+                        <div className="space-y-0.5 truncate">
+                          <span className="font-mono text-zinc-200 block text-[11px] truncate font-bold">{tab.title}</span>
+                          <span className="text-[10px] text-zinc-400 block truncate">{tab.label}</span>
+                        </div>
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                          tab.status === 'ok'
+                            ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                            : tab.status === 'repaired'
+                            ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
+                            : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                        }`}>
+                          {tab.status === 'ok' ? '✓ مطابق' : tab.status === 'repaired' ? '✓ تم ضبطه' : 'ناقص'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>

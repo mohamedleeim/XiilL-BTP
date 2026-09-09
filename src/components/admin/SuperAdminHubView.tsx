@@ -16,6 +16,7 @@ import {
   Trash2, 
   RefreshCw, 
   ExternalLink,
+  ListChecks,
   Users,
   Building2,
   Lock,
@@ -51,6 +52,7 @@ export const SuperAdminHubView: React.FC = () => {
     assignSupervisorProjects,
     workspaceConfig,
     createMasterSheet,
+    inspectAndConnectMasterSheet,
     syncToGoogleSheets,
     isGoogleAuthenticated,
     googleUser,
@@ -71,6 +73,8 @@ export const SuperAdminHubView: React.FC = () => {
   const [isRegistering, setIsRegistering] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isCreatingSheet, setIsCreatingSheet] = useState(false);
+  const [isInspectingSheet, setIsInspectingSheet] = useState(false);
+  const [sheetInspectionResult, setSheetInspectionResult] = useState<any>(null);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [copiedInvite, setCopiedInvite] = useState<string | null>(null);
@@ -173,12 +177,31 @@ export const SuperAdminHubView: React.FC = () => {
       const res = await createMasterSheet('XiilL BTP — المنظومة المركزية للأوراش');
       setNotification({
         type: 'success',
-        text: `تم إنشاء ملف Google Sheets الرئيسي بنجاح مع ورقة Admin_Registry لكافة الأدمينات!`
+        text: res.isExisting
+          ? `تم العثور على ملفك المعتمد (${res.title || 'XiilL BTP'}) وتأكيد تطابق الأوراق ورؤوس الأعمدة بنجاح!`
+          : `تم إنشاء وتهيئة ملف Google Sheets الرئيسي بنجاح مع ورقة Admin_Registry لكافة الأدمينات!`
       });
     } catch (err: any) {
-      setNotification({ type: 'error', text: err.message || 'فشل إنشاء ملف Google Sheets.' });
+      setNotification({ type: 'error', text: err.message || 'فشل فحص أو إنشاء ملف Google Sheets.' });
     } finally {
       setIsCreatingSheet(false);
+    }
+  };
+
+  const handleInspectMasterSheet = async () => {
+    setIsInspectingSheet(true);
+    setNotification(null);
+    try {
+      const val = await inspectAndConnectMasterSheet();
+      setSheetInspectionResult(val);
+      setNotification({
+        type: 'success',
+        text: val.message
+      });
+    } catch (err: any) {
+      setNotification({ type: 'error', text: err.message || 'فشل فحص أوراق ورؤوس أعمدة Google Sheets.' });
+    } finally {
+      setIsInspectingSheet(false);
     }
   };
 
@@ -569,22 +592,33 @@ export const SuperAdminHubView: React.FC = () => {
                 className="w-full py-2.5 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
               >
                 {isCreatingSheet ? <Loader2 className="w-4 h-4 animate-spin text-zinc-950" /> : <FileSpreadsheet className="w-4 h-4" />}
-                <span>إنشاء ملف Google Sheets في حسابي</span>
+                <span>فحص Drive وربط ملف Google Sheets</span>
               </button>
             ) : (
               <div className="space-y-2">
-                <a
-                  href={workspaceConfig.masterSheetUrl || `https://docs.google.com/spreadsheets/d/${workspaceConfig.masterSheetId}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="w-full py-2 px-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors"
-                >
-                  <ExternalLink className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>فتح الملف في Google Sheets</span>
-                </a>
+                <div className="flex gap-2">
+                  <a
+                    href={workspaceConfig.masterSheetUrl || `https://docs.google.com/spreadsheets/d/${workspaceConfig.masterSheetId}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex-1 py-2 px-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>فتح في Sheets</span>
+                  </a>
+                  <button
+                    onClick={handleInspectMasterSheet}
+                    disabled={isInspectingSheet}
+                    className="py-2 px-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-amber-400 font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors border border-zinc-700 cursor-pointer disabled:opacity-50"
+                    title="فحص الأوراق ورؤوس الأعمدة"
+                  >
+                    {isInspectingSheet ? <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400" /> : <ListChecks className="w-3.5 h-3.5" />}
+                    <span>فحص الأوراق</span>
+                  </button>
+                </div>
                 <button
                   onClick={handleSyncToSheets}
-                  disabled={isSyncing}
+                  disabled={isSyncing || isInspectingSheet}
                   className="w-full py-2 px-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
                 >
                   {isSyncing ? <Loader2 className="w-3.5 h-3.5 animate-spin text-zinc-950" /> : <RefreshCw className="w-3.5 h-3.5" />}

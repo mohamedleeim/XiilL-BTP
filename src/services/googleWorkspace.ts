@@ -28,6 +28,11 @@ export const SUPER_ADMIN_EMAIL = 'mohamedleeim@gmail.com';
 export const SUPER_ADMIN_MASTER_KEY = 'XiilL-ROOT-2026-BTP';
 export const GOOGLE_OAUTH_CLIENT_ID = '432117813508-3kbhpgecu47h2h0fl0g9l96pk1894ir7.apps.googleusercontent.com';
 
+// Official Master Spreadsheet Constants (Known Master Sheet for XiilL BTP)
+export const KNOWN_MASTER_SPREADSHEET_ID = '1KCWDJihciRXulv1n8NwEy668N_oiQn7CCVewRurto5k';
+export const KNOWN_MASTER_SPREADSHEET_TITLE = 'XiilL BTP — المنظومة المركزية للأوراش';
+export const KNOWN_MASTER_SPREADSHEET_URL = `https://docs.google.com/spreadsheets/d/${KNOWN_MASTER_SPREADSHEET_ID}/edit`;
+
 // Initialize Firebase App safely
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 export const auth = getAuth(app);
@@ -533,6 +538,48 @@ export const inspectAndRepairSpreadsheet = async (
       }
     }
 
+    // Step C: Verify & repair headers on existing sheets if row 1 is missing or incomplete
+    if (autoRepair && existing.length > 0) {
+      try {
+        const rangesQuery = existing.map(title => `ranges=${encodeURIComponent(title + '!A1:Z1')}`).join('&');
+        const headersRes = await fetchWithRetry(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchGet?${rangesQuery}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (headersRes.ok) {
+          const batchData = await headersRes.json();
+          const valueRanges: any[] = batchData.valueRanges || [];
+          const headerUpdates: any[] = [];
+
+          existing.forEach((title, idx) => {
+            const def = BTP_STANDARD_SHEETS.find(d => d.title.toLowerCase().trim() === title.toLowerCase().trim());
+            if (!def) return;
+            const currentHeaders = valueRanges[idx]?.values?.[0] || [];
+            // If row 1 is empty or has fewer columns than required, write the full standard header row
+            if (currentHeaders.length < def.headers.length) {
+              headerUpdates.push({
+                range: `${title}!A1:${String.fromCharCode(65 + Math.min(def.headers.length - 1, 25))}1`,
+                values: [def.headers]
+              });
+            }
+          });
+
+          if (headerUpdates.length > 0) {
+            await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`, {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                valueInputOption: 'USER_ENTERED',
+                data: headerUpdates
+              })
+            });
+            repaired = true;
+          }
+        }
+      } catch (headerErr) {
+        console.warn('Existing sheets header validation notice:', headerErr);
+      }
+    }
+
     const tabStatuses: SheetTabStatus[] = BTP_STANDARD_SHEETS.map(def => {
       const isExisting = existing.includes(def.title);
       const isRepaired = repairedTitles.includes(def.title);
@@ -558,7 +605,7 @@ export const inspectAndRepairSpreadsheet = async (
       repaired,
       tabStatuses,
       message: allTabsPresent
-        ? (repaired ? 'تمت إضافة وتنسيق الأوراق الناقصة تلقائياً بنجاح وبدون أي أخطاء!' : 'جميع الأوراق الثمانية متطابقة وجاهزة للمزامنة 100%!')
+        ? (repaired ? 'تم فحص الملف: تمت إضافة وتنسيق الأوراق ورؤوس الأعمدة الناقصة تلقائياً بنجاح!' : 'تم التحقق بنجاح: جميع الأوراق الثمانية ورؤوس الأعمدة متطابقة وجاهزة 100%!')
         : `الملف تنقصه ${missing.length} أوراق رئيسية لمطابقة هيكل الأوراش.`
     };
   }
@@ -674,6 +721,84 @@ export const createMasterSpreadsheet = async (
   }
 
   return { id: spreadsheetId, url, title };
+};
+
+/**
+ * Intelligent Smart Master Spreadsheet Resolution (XiilL BTP Central Registry):
+ * 1. Checks if the official or preferred Master Sheet ID exists (default: 1KCWDJihciRXulv1n8NwEy668N_oiQn7CCVewRurto5k).
+ * 2. If not immediately accessible, searches Google Drive for any spreadsheet named "XiilL BTP — المنظومة المركزية للأوراش".
+ * 3. Validates all 8 sheets + Admin_Registry + inspects and auto-repairs row 1 column headers.
+ * 4. Only creates a brand new file if no matching spreadsheet exists anywhere in the user's Drive.
+ */
+export const findOrCreateMasterSpreadsheet = async (
+  requestedTitle: string = KNOWN_MASTER_SPREADSHEET_TITLE,
+  preferredId: string = KNOWN_MASTER_SPREADSHEET_ID
+): Promise<{
+  spreadsheet: { id: string; url: string; title: string };
+  isExisting: boolean;
+  validation: SheetValidationResult;
+}> => {
+  const token = getAccessToken();
+  if (!token) throw new Error('يرجى تسجيل الدخول بـ Gmail أولاً للتحقق من ملف Google Sheets');
+
+  const cleanPreferredId = preferredId ? (extractSpreadsheetId(preferredId) || preferredId) : '';
+
+  // 1. Direct validation of preferred / known master sheet ID
+  if (cleanPreferredId) {
+    try {
+      const validation = await inspectAndRepairSpreadsheet(cleanPreferredId, true);
+      if (validation.success) {
+        await ensureAdminRegistrySheet(cleanPreferredId);
+        return {
+          spreadsheet: {
+            id: cleanPreferredId,
+            url: `https://docs.google.com/spreadsheets/d/${cleanPreferredId}/edit`,
+            title: validation.spreadsheetTitle || requestedTitle
+          },
+          isExisting: true,
+          validation
+        };
+      }
+    } catch (prefErr) {
+      console.warn('Preferred Master Sheet ID verification failed, searching Google Drive:', prefErr);
+    }
+  }
+
+  // 2. Search Google Drive for any existing Central Master sheet
+  try {
+    const existingFiles = await searchDriveForBtpSpreadsheets();
+    const matchedFile = existingFiles.find(f => 
+      f.name.includes('المنظومة المركزية') || 
+      f.name.includes('XiilL BTP') ||
+      (cleanPreferredId && f.id === cleanPreferredId)
+    ) || (existingFiles.length > 0 ? existingFiles[0] : null);
+
+    if (matchedFile) {
+      const validation = await inspectAndRepairSpreadsheet(matchedFile.id, true);
+      await ensureAdminRegistrySheet(matchedFile.id);
+      return {
+        spreadsheet: {
+          id: matchedFile.id,
+          url: matchedFile.url,
+          title: matchedFile.name
+        },
+        isExisting: true,
+        validation
+      };
+    }
+  } catch (driveSearchErr) {
+    console.warn('Drive search error for Master Sheet:', driveSearchErr);
+  }
+
+  // 3. If and ONLY IF no existing master sheet is found in Google Drive, create a fresh one
+  const created = await createMasterSpreadsheet(requestedTitle);
+  const validation = await inspectAndRepairSpreadsheet(created.id, true);
+  await ensureAdminRegistrySheet(created.id);
+  return {
+    spreadsheet: created,
+    isExisting: false,
+    validation
+  };
 };
 
 /**

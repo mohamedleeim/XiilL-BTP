@@ -55,6 +55,9 @@ import {
   generateUniqueAdminId,
   extractSpreadsheetId,
   createMasterSpreadsheet,
+  findOrCreateMasterSpreadsheet,
+  KNOWN_MASTER_SPREADSHEET_ID,
+  KNOWN_MASTER_SPREADSHEET_TITLE,
   ensureAdminRegistrySheet,
   saveAdminToRegistrySheet,
   fetchAdminRegistryFromSheet,
@@ -251,7 +254,8 @@ interface AppContextType {
   updateWorkspaceConfig: (config: Partial<WorkspaceConfig>) => void;
   setGuestGoogleSheetUrl: (url: string) => Promise<{ success: boolean; message: string }>;
   syncToGoogleSheets: (targetAdminId?: string) => Promise<{ success: boolean; rowsCount: number; message: string }>;
-  createMasterSheet: (title?: string) => Promise<{ id: string; url: string }>;
+  createMasterSheet: (title?: string) => Promise<{ id: string; url: string; title?: string; isExisting?: boolean; validation?: SheetValidationResult }>;
+  inspectAndConnectMasterSheet: (sheetIdOrUrl?: string) => Promise<SheetValidationResult>;
 
   // General Manager & Supervisor Smart Google Sheets Onboarding (الخيار أ)
   isSheetOnboardingOpen: boolean;
@@ -2432,25 +2436,57 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const createMasterSheet = async (title?: string) => {
-    const result = await createMasterSpreadsheet(title);
+    const targetTitle = title || state.workspaceConfig.masterSheetTitle || KNOWN_MASTER_SPREADSHEET_TITLE;
+    const preferredId = state.workspaceConfig.masterSheetId || KNOWN_MASTER_SPREADSHEET_ID;
+
+    // Smart Resolution: Search Drive and check known ID first before ever creating a duplicate file
+    const result = await findOrCreateMasterSpreadsheet(targetTitle, preferredId);
+    const { spreadsheet, isExisting, validation } = result;
+
     setState(prev => ({
       ...prev,
       workspaceConfig: {
         ...prev.workspaceConfig,
-        masterSheetId: result.id,
-        masterSheetUrl: result.url,
-        masterSheetTitle: result.title,
+        masterSheetId: spreadsheet.id,
+        masterSheetUrl: spreadsheet.url,
+        masterSheetTitle: spreadsheet.title,
         lastSheetsSync: new Date().toISOString()
       }
     }));
     try {
       for (const adm of state.adminAccounts) {
-        await saveAdminToRegistrySheet(result.id, adm);
+        await saveAdminToRegistrySheet(spreadsheet.id, adm);
       }
     } catch (e) {
       console.warn('Error saving initial admins to sheet:', e);
     }
-    return result;
+    return { id: spreadsheet.id, url: spreadsheet.url, title: spreadsheet.title, isExisting, validation };
+  };
+
+  const inspectAndConnectMasterSheet = async (sheetIdOrUrl?: string): Promise<SheetValidationResult> => {
+    let sheetId = sheetIdOrUrl 
+      ? (extractSpreadsheetId(sheetIdOrUrl) || sheetIdOrUrl.trim()) 
+      : (state.workspaceConfig.masterSheetId || KNOWN_MASTER_SPREADSHEET_ID);
+
+    if (!sheetId) {
+      sheetId = KNOWN_MASTER_SPREADSHEET_ID;
+    }
+
+    const validation = await inspectAndRepairSpreadsheet(sheetId, true);
+    await ensureAdminRegistrySheet(sheetId);
+
+    setState(prev => ({
+      ...prev,
+      workspaceConfig: {
+        ...prev.workspaceConfig,
+        masterSheetId: sheetId,
+        masterSheetUrl: `https://docs.google.com/spreadsheets/d/${sheetId}/edit`,
+        masterSheetTitle: validation.spreadsheetTitle || prev.workspaceConfig.masterSheetTitle || KNOWN_MASTER_SPREADSHEET_TITLE,
+        lastSheetsSync: new Date().toISOString()
+      }
+    }));
+
+    return validation;
   };
 
   const openSheetOnboarding = () => setIsSheetOnboardingOpen(true);
@@ -2763,6 +2799,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setGuestGoogleSheetUrl,
         syncToGoogleSheets,
         createMasterSheet,
+        inspectAndConnectMasterSheet,
 
         // Smart Sheet Onboarding & Schema Verification (الخيار أ)
         isSheetOnboardingOpen,

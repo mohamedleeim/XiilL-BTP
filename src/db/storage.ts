@@ -35,6 +35,11 @@ import {
 } from './seedData';
 import { ActiveSession } from '../types';
 import { createAnnualSubscription, createDefaultTrialSubscription } from '../services/subscriptionPlans';
+import {
+  KNOWN_MASTER_SPREADSHEET_ID,
+  KNOWN_MASTER_SPREADSHEET_TITLE,
+  KNOWN_MASTER_SPREADSHEET_URL
+} from '../services/googleWorkspace';
 
 const STORAGE_KEY = 'xiill_btp_v1_live';
 export const AUTH_SESSION_KEY = 'xiill_btp_active_session';
@@ -67,8 +72,9 @@ export const sampleClientAdmin: AdminAccount = {
 };
 
 export const defaultWorkspaceConfig: WorkspaceConfig = {
-  masterSheetId: '',
-  masterSheetUrl: '',
+  masterSheetId: KNOWN_MASTER_SPREADSHEET_ID,
+  masterSheetUrl: KNOWN_MASTER_SPREADSHEET_URL,
+  masterSheetTitle: KNOWN_MASTER_SPREADSHEET_TITLE,
   guestSheetUrl: '',
   guestSheetId: '',
   driveFolderId: '',
@@ -164,7 +170,19 @@ export const loadInitialState = (): AppState => {
         ? parsed.adminAccounts 
         : [defaultSuperAdmin, sampleClientAdmin];
       const currentAdmin = parsed.currentAdmin !== undefined ? parsed.currentAdmin : defaultSuperAdmin;
-      const workspaceConfig = { ...defaultWorkspaceConfig, ...(parsed.workspaceConfig || {}) };
+      const workspaceConfig: WorkspaceConfig = {
+        ...defaultWorkspaceConfig,
+        ...(parsed.workspaceConfig || {}),
+        masterSheetId: (parsed.workspaceConfig?.masterSheetId && parsed.workspaceConfig.masterSheetId.trim()) 
+          ? parsed.workspaceConfig.masterSheetId 
+          : defaultWorkspaceConfig.masterSheetId,
+        masterSheetUrl: (parsed.workspaceConfig?.masterSheetUrl && parsed.workspaceConfig.masterSheetUrl.trim()) 
+          ? parsed.workspaceConfig.masterSheetUrl 
+          : defaultWorkspaceConfig.masterSheetUrl,
+        masterSheetTitle: (parsed.workspaceConfig?.masterSheetTitle && parsed.workspaceConfig.masterSheetTitle.trim()) 
+          ? parsed.workspaceConfig.masterSheetTitle 
+          : defaultWorkspaceConfig.masterSheetTitle
+      };
 
       return {
         users,
