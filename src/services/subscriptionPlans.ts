@@ -131,6 +131,45 @@ export const createAnnualSubscription = (): SubscriptionInfo => {
 };
 
 /**
+ * Calculates plan dates and duration summary for display
+ */
+export const getTierDurationInfo = (tier: SubscriptionTier) => {
+  const now = new Date();
+  let durationDays = 3;
+  let label = '3 أيام تجريبية';
+  let price = 0;
+  let note = 'بعد انتهاء الـ 3 أيام، يتوقف الحساب ويعود للوضع الافتراضي المغلق ولا يحق له الدخول إلا بعد الاشتراك الشهري أو السنوي.';
+
+  if (tier === 'monthly') {
+    durationDays = 30;
+    label = 'شهر كامل (30 يوماً)';
+    price = 290;
+    note = 'باقة شهرية متجددة بقيمة 290 درهم / شهر تمنح حق الوصول الكامل للمنظومة.';
+  } else if (tier === 'annual') {
+    durationDays = 365;
+    label = 'سنة كاملة (365 يوماً)';
+    price = 2610;
+    note = 'باقة سنوية احترافية بخصم 25% (2610 درهم) مع توفير 3 أشهر مجانية.';
+  }
+
+  const endDate = new Date(now.getTime() + durationDays * 24 * 60 * 60 * 1000);
+
+  return {
+    tier,
+    durationDays,
+    label,
+    durationLabel: label,
+    price,
+    note,
+    termsNote: note,
+    startDateStr: now.toISOString().split('T')[0],
+    endDateStr: endDate.toISOString().split('T')[0],
+    startDateFormatted: now.toLocaleDateString('ar-MA', { year: 'numeric', month: 'long', day: 'numeric' }),
+    endDateFormatted: endDate.toLocaleDateString('ar-MA', { year: 'numeric', month: 'long', day: 'numeric' })
+  };
+};
+
+/**
  * Calculates remaining days in subscription or trial
  */
 export const calculateDaysRemaining = (sub?: SubscriptionInfo): number => {

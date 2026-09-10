@@ -895,6 +895,7 @@ export const ensureAdminRegistrySheet = async (spreadsheetId: string) => {
       'Admin ID (كود الأدمين)',
       'Email (البريد)',
       'Name (الاسم)',
+      'Phone (الهاتف / WhatsApp)',
       'Role (الدور)',
       'Type Abonnement (نوع الباقة)',
       'Date Début (تاريخ بدأ الباقة)',
@@ -905,8 +906,8 @@ export const ensureAdminRegistrySheet = async (spreadsheetId: string) => {
       'Notes (ملاحظات)'
     ];
 
-    if (!checkValues.values || checkValues.values.length === 0 || checkValues.values[0].length < 11) {
-      await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Admin_Registry!A1:K1?valueInputOption=USER_ENTERED`, {
+    if (!checkValues.values || checkValues.values.length === 0 || checkValues.values[0].length < 12) {
+      await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Admin_Registry!A1:L1?valueInputOption=USER_ENTERED`, {
         method: 'PUT',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ values: [currentHeaders] })
@@ -937,6 +938,7 @@ export const saveAdminToRegistrySheet = async (
     admin.id,
     admin.email,
     admin.name,
+    admin.phone || '',
     admin.role,
     formatTierLabel(admin.subscription?.tier),
     formatSheetDate(admin.subscription?.startDate),
@@ -947,7 +949,7 @@ export const saveAdminToRegistrySheet = async (
     admin.notes || (admin.companyName ? `مقاول: ${admin.companyName}` : '')
   ];
 
-  const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Admin_Registry!A:K:append?valueInputOption=USER_ENTERED`, {
+  const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Admin_Registry!A:L:append?valueInputOption=USER_ENTERED`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -978,6 +980,7 @@ export const pushAdminsToMasterSheet = async (
       'Admin ID (كود الأدمين)',
       'Email (البريد)',
       'Name (الاسم)',
+      'Phone (الهاتف / WhatsApp)',
       'Role (الدور)',
       'Type Abonnement (نوع الباقة)',
       'Date Début (تاريخ بدأ الباقة)',
@@ -993,6 +996,7 @@ export const pushAdminsToMasterSheet = async (
         a.id,
         a.email,
         a.name,
+        a.phone || '',
         a.role,
         formatTierLabel(a.subscription?.tier),
         formatSheetDate(a.subscription?.startDate),
@@ -1007,7 +1011,7 @@ export const pushAdminsToMasterSheet = async (
 
   // 1. Clear old data from row 2 downwards so any deleted contractor is completely wiped
   try {
-    await fetchWithRetry(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Admin_Registry!A2:K500:clear`, {
+    await fetchWithRetry(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Admin_Registry!A2:L500:clear`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` }
     });
@@ -1025,7 +1029,7 @@ export const pushAdminsToMasterSheet = async (
   if (!res || !res.ok) {
     // Fallback to Arabic sheet tab name if present
     try {
-      await fetchWithRetry(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('سجل_الأدمين')}!A2:K500:clear`, {
+      await fetchWithRetry(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('سجل_الأدمين')}!A2:L500:clear`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -1077,23 +1081,73 @@ export const fetchAdminRegistryFromSheet = async (
   if (!token) return [];
 
   try {
-    const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Admin_Registry!A2:K100`, {
+    const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Admin_Registry!A1:L200`, {
       headers: { Authorization: `Bearer ${token}` }
     });
 
     if (!res.ok) return [];
     const data = await res.json();
-    if (!data.values || !Array.isArray(data.values)) return [];
+    if (!data.values || !Array.isArray(data.values) || data.values.length === 0) return [];
 
-    return data.values.map((row: string[]) => {
+    const firstRow: string[] = data.values[0] || [];
+    const isFirstRowHeader = firstRow.some(cell => /admin|email|بريد|كود|اسم|name/i.test(cell));
+
+    // Dynamic Header Detection
+    let colMap = {
+      id: 0,
+      email: 1,
+      name: 2,
+      phone: -1,
+      role: 3,
+      tier: 4,
+      startDate: 5,
+      endDate: 6,
+      status: 7,
+      createdAt: 8,
+      lastLogin: 9,
+      notes: 10
+    };
+
+    if (isFirstRowHeader) {
+      firstRow.forEach((headerStr, idx) => {
+        const h = (headerStr || '').toLowerCase();
+        if (h.includes('admin id') || h.includes('كود')) colMap.id = idx;
+        else if (h.includes('email') || h.includes('بريد')) colMap.email = idx;
+        else if (h.includes('phone') || h.includes('هاتف') || h.includes('whatsapp') || h.includes('واتساب')) colMap.phone = idx;
+        else if (h.includes('name') || h.includes('الاسم') || h.includes('المقاول')) colMap.name = idx;
+        else if (h.includes('role') || h.includes('الدور') || h.includes('الصلاحية')) colMap.role = idx;
+        else if (h.includes('type') || h.includes('abonnement') || h.includes('باقة') || h.includes('اشتراك')) colMap.tier = idx;
+        else if (h.includes('début') || h.includes('بدأ') || h.includes('بداية')) colMap.startDate = idx;
+        else if (h.includes('fin') || h.includes('إنتهاء') || h.includes('انتهاء')) colMap.endDate = idx;
+        else if (h.includes('status') || h.includes('الحالة')) colMap.status = idx;
+        else if (h.includes('created') || h.includes('تسجيل')) colMap.createdAt = idx;
+        else if (h.includes('login') || h.includes('دخول')) colMap.lastLogin = idx;
+        else if (h.includes('note') || h.includes('ملاحظ')) colMap.notes = idx;
+      });
+    }
+
+    const rowsToParse = isFirstRowHeader ? data.values.slice(1) : data.values;
+
+    return rowsToParse.map((row: string[]) => {
       if (!row || !row[0] || !row[1]) return null;
 
-      const adminId = (row[0] || '').trim();
-      const email = (row[1] || '').trim().toLowerCase();
-      const name = (row[2] || '').trim() || 'مدير عام';
-      const role = ((row[3] || '').trim().toLowerCase() === 'super_admin' ? 'super_admin' : 'admin') as 'super_admin' | 'admin';
+      const adminId = (row[colMap.id] || row[0] || '').trim();
+      const email = (row[colMap.email] || row[1] || '').trim().toLowerCase();
+      const name = (row[colMap.name] || row[2] || '').trim() || 'مدير عام';
 
-      // Detect if row is in legacy 7-column schema (where row[4] was status: 'active', 'نشط', etc.)
+      let phone = '';
+      if (colMap.phone !== -1 && row[colMap.phone]) {
+        phone = (row[colMap.phone] || '').trim();
+      } else if (row.length >= 12 && /^[+0-9\s-]{6,}$/.test((row[3] || '').trim())) {
+        // Detected phone in column 3
+        phone = (row[3] || '').trim();
+      }
+
+      let role: 'super_admin' | 'admin' = 'admin';
+      const roleRaw = (row[colMap.role] || (colMap.phone !== -1 ? row[4] : row[3]) || '').trim().toLowerCase();
+      if (roleRaw === 'super_admin') role = 'super_admin';
+
+      // Detect if row is in legacy 7-column schema
       const col4 = (row[4] || '').trim().toLowerCase();
       const isLegacy = row.length <= 8 || ['active', 'نشط', 'suspended', 'معلق', 'expired', 'منتهي'].includes(col4);
 
@@ -1115,13 +1169,21 @@ export const fetchAdminRegistryFromSheet = async (
         lastLoginAt = row[6] && row[6] !== 'لم يدخل بعد' ? row[6] : undefined;
         notes = (row[7] || '').trim();
       } else {
-        tier = parseTierLabel(row[4]);
-        startDate = safeIsoDate(row[5], new Date().toISOString());
-        endDate = safeIsoDate(row[6], new Date(Date.now() + (tier === 'annual' ? 365 : tier === 'monthly' ? 30 : 3) * 86400000).toISOString());
-        rawStatus = (row[7] || 'active').trim();
-        createdAt = safeIsoDate(row[8], startDate);
-        lastLoginAt = row[9] && row[9] !== 'لم يدخل بعد' ? row[9] : undefined;
-        notes = (row[10] || '').trim();
+        const tierRaw = row[colMap.tier] || (colMap.phone !== -1 ? row[5] : row[4]);
+        tier = parseTierLabel(tierRaw);
+        
+        const startRaw = row[colMap.startDate] || (colMap.phone !== -1 ? row[6] : row[5]);
+        startDate = safeIsoDate(startRaw, new Date().toISOString());
+
+        const endRaw = row[colMap.endDate] || (colMap.phone !== -1 ? row[7] : row[6]);
+        const defaultEndDays = tier === 'annual' ? 365 : tier === 'monthly' ? 30 : 3;
+        endDate = safeIsoDate(endRaw, new Date(Date.now() + defaultEndDays * 86400000).toISOString());
+
+        rawStatus = (row[colMap.status] || (colMap.phone !== -1 ? row[8] : row[7]) || 'active').trim();
+        createdAt = safeIsoDate(row[colMap.createdAt] || (colMap.phone !== -1 ? row[9] : row[8]), startDate);
+        const loginRaw = row[colMap.lastLogin] || (colMap.phone !== -1 ? row[10] : row[9]);
+        lastLoginAt = loginRaw && loginRaw !== 'لم يدخل بعد' ? loginRaw : undefined;
+        notes = (row[colMap.notes] || (colMap.phone !== -1 ? row[11] : row[10]) || '').trim();
       }
 
       const subscription: SubscriptionInfo = {
@@ -1141,6 +1203,7 @@ export const fetchAdminRegistryFromSheet = async (
         id: adminId,
         email,
         name,
+        phone: phone || undefined,
         role,
         status: autoStatus,
         subscription,
@@ -1153,6 +1216,60 @@ export const fetchAdminRegistryFromSheet = async (
     console.error('Failed to read Admin Registry from sheet:', err);
     return [];
   }
+};
+
+/**
+ * Builds a clean WhatsApp greeting message containing the Admin ID, subscription details, and portal link.
+ */
+export const buildAdminWhatsAppMessage = (admin: AdminAccount, portalUrl?: string): string => {
+  const url = portalUrl || window.location.origin;
+  const tierName = admin.subscription?.tier === 'annual'
+    ? 'باقة سنوية (365 يوماً - خصم 25%)'
+    : admin.subscription?.tier === 'monthly'
+      ? 'باقة شهرية (30 يوماً)'
+      : 'باقة تجريبية مجانية (3 أيام)';
+
+  const endDateFormatted = admin.subscription?.endDate
+    ? formatSheetDate(admin.subscription.endDate)
+    : '';
+
+  return `السلام عليكم ورحمة الله وبركاته،
+السيد(ة) ${admin.name} المحترم(ة)،
+
+تم إعداد وتفعيل حسابكم بنجاح في منظومة إدارة أوراش البناء (XiilL BTP):
+
+👤 الصلاحية والرول: مدير عام / مقاول (Directeur Général)
+🔑 كود الأدمين الخاص بكم (Admin ID): ${admin.id}
+📋 نوع الاشتراك: ${tierName}
+⏳ تاريخ الانتهاء: ${endDateFormatted}
+
+🌐 رابط الدخول المباشر للمنظومة:
+${url}
+
+طريقة الدخول:
+1. افتح الرابط أعلاه
+2. اختر "فضاء المدير العام / المقاول"
+3. أدخل كود الأدمين الخاص بك: ${admin.id}
+
+نتمنى لكم تجربة موفقة في ضبط ومراقبة أوراشكم ومصاريفكم بدقة.`;
+};
+
+/**
+ * Builds direct WhatsApp URL (web/app)
+ */
+export const buildAdminWhatsAppUrl = (phone?: string, admin?: AdminAccount, portalUrl?: string): string | null => {
+  if (!phone || !admin) return null;
+  // Clean phone number: remove non-digits, replace leading 0 with Moroccan country code 212 if Moroccan
+  let clean = phone.replace(/[^0-9+]/g, '');
+  if (clean.startsWith('0')) {
+    clean = '212' + clean.slice(1);
+  } else if (clean.startsWith('+')) {
+    clean = clean.slice(1);
+  }
+  if (!clean || clean.length < 8) return null;
+
+  const msg = buildAdminWhatsAppMessage(admin, portalUrl);
+  return `https://wa.me/${clean}?text=${encodeURIComponent(msg)}`;
 };
 
 /**

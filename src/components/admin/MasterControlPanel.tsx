@@ -37,7 +37,11 @@ import {
   CheckCheck,
   ListChecks,
   SlidersHorizontal,
-  Table
+  Table,
+  MessageCircle,
+  CheckCircle,
+  Clock,
+  Shield
 } from 'lucide-react';
 import {
   generateUniqueAdminId,
@@ -45,9 +49,12 @@ import {
   KNOWN_MASTER_SPREADSHEET_ID,
   KNOWN_MASTER_SPREADSHEET_TITLE,
   SheetValidationResult,
-  BTP_STANDARD_SHEETS
+  BTP_STANDARD_SHEETS,
+  buildAdminWhatsAppUrl,
+  buildAdminWhatsAppMessage
 } from '../../services/googleWorkspace';
-import { AdminAccount } from '../../types';
+import { AdminAccount, SubscriptionTier } from '../../types';
+import { getTierDurationInfo } from '../../services/subscriptionPlans';
 
 interface MasterControlPanelProps {
   onInspectTenant?: (tenantId: string) => void;
@@ -88,6 +95,9 @@ export const MasterControlPanel: React.FC<MasterControlPanelProps> = ({ onInspec
   const [newCompanyName, setNewCompanyName] = useState('');
   const [newPhone, setNewPhone] = useState('');
   const [newNotes, setNewNotes] = useState('');
+  const [newRole, setNewRole] = useState<'admin'>('admin');
+  const [newTier, setNewTier] = useState<SubscriptionTier>('trial_3days');
+  const [registeredSuccessAdmin, setRegisteredSuccessAdmin] = useState<AdminAccount | null>(null);
   const [generatedId, setGeneratedId] = useState(() => generateUniqueAdminId(adminAccounts.map(a => a.id)));
 
   // UI state
@@ -204,22 +214,25 @@ export const MasterControlPanel: React.FC<MasterControlPanelProps> = ({ onInspec
         name: newName.trim(),
         companyName: newCompanyName.trim() || undefined,
         phone: newPhone.trim() || undefined,
-        notes: newNotes.trim() || undefined
+        role: newRole,
+        notes: newNotes.trim() || undefined,
+        subscriptionTier: newTier
       });
 
+      setRegisteredSuccessAdmin(created);
       setNotification({
         type: 'success',
-        text: `تم إصدار الترخيص وتسجيل المدير العام بنجاح بالكود: ${created.id}`
+        text: `تم إصدار الترخيص وتسجيل المقاول بنجاح بالكود: ${created.id}`
       });
 
-      // Reset form
+      // Reset form fields
       setNewEmail('');
       setNewName('');
       setNewCompanyName('');
       setNewPhone('');
       setNewNotes('');
+      setNewTier('trial_3days');
       setGeneratedId(generateUniqueAdminId([...adminAccounts.map(a => a.id), created.id]));
-      setIsRegisterModalOpen(false);
     } catch (err: any) {
       setNotification({ type: 'error', text: err?.message || 'فشل تسجيل المدير العام الجديد.' });
     } finally {
@@ -239,25 +252,11 @@ export const MasterControlPanel: React.FC<MasterControlPanelProps> = ({ onInspec
   };
 
   const generateInviteMessage = (admin: AdminAccount) => {
-    return `السلام عليكم سي ${admin.name}،
-مرحباً بك في منظومة *XiilL BTP* لإدارة أوراش البناء والمقاولات.
-تم تفعيل رخصة حسابك كمدير عام للنظام بنجاح:
-🔑 كود الدخول الخاص بك (Admin ID): *${admin.id}*
-📧 البريد المعتمد: ${admin.email}
-
-*طريقة الدخول:*
-1. افتح المنظومة واختر "مدير عام / أدمين"
-2. أدخل كود الأدمين الخاص بك أعلاه واضغط دخول
-3. سيفتح لك فضاء عملك المستقل كلياً للتحكم في أوراشك، مشرفيك، عمالك، ومصاريفك. بالتوفيق!`;
+    return buildAdminWhatsAppMessage(admin, window.location.origin);
   };
 
   const handleShareWhatsApp = (admin: AdminAccount) => {
-    const msg = generateInviteMessage(admin);
-    const phone = admin.phone ? admin.phone.replace(/[^0-9]/g, '') : '';
-    const cleanPhone = phone.startsWith('0') ? `212${phone.slice(1)}` : phone;
-    const url = cleanPhone
-      ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`
-      : `https://wa.me/?text=${encodeURIComponent(msg)}`;
+    const url = buildAdminWhatsAppUrl(admin.phone, admin, window.location.origin);
     window.open(url, '_blank');
   };
 
@@ -609,7 +608,10 @@ export const MasterControlPanel: React.FC<MasterControlPanelProps> = ({ onInspec
                 </p>
               </div>
               <button
-                onClick={() => setIsRegisterModalOpen(true)}
+                onClick={() => {
+                  setRegisteredSuccessAdmin(null);
+                  setIsRegisterModalOpen(true);
+                }}
                 className="py-3 px-5 rounded-xl bg-amber-500 hover:bg-amber-400 active:bg-amber-600 font-bold text-zinc-950 shadow-lg shadow-amber-500/20 text-xs sm:text-sm flex items-center gap-2 transition-all shrink-0 cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
@@ -754,7 +756,10 @@ export const MasterControlPanel: React.FC<MasterControlPanelProps> = ({ onInspec
                 </button>
 
                 <button
-                  onClick={() => setIsRegisterModalOpen(true)}
+                  onClick={() => {
+                    setRegisteredSuccessAdmin(null);
+                    setIsRegisterModalOpen(true);
+                  }}
                   className="py-2 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 active:bg-amber-600 font-bold text-zinc-950 shadow-md shadow-amber-500/20 text-xs flex items-center gap-1.5 transition-all shrink-0 cursor-pointer"
                 >
                   <Plus className="w-4 h-4" />
@@ -1403,146 +1408,392 @@ export const MasterControlPanel: React.FC<MasterControlPanelProps> = ({ onInspec
       {/* MODAL: REGISTER NEW GENERAL MANAGER / TENANT */}
       {/* ========================================================================= */}
       {isRegisterModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn overflow-y-auto">
           <div
-            className="w-full max-w-lg bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl p-6 text-zinc-100 space-y-4"
+            className="w-full max-w-lg bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl p-5 sm:p-6 text-zinc-100 space-y-4 my-8"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-amber-500/15 text-amber-400 border border-amber-500/30 flex items-center justify-center font-bold">
-                  <Plus className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-extrabold text-white">إصدار ترخيص / تسجيل مدير عام جديد</h3>
-                  <p className="text-[11px] text-zinc-400">توليد كود أدمين وإعداد فضاء العمل المستقل للمقاول</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setIsRegisterModalOpen(false)}
-                className="text-zinc-400 hover:text-white p-1 rounded-lg"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleRegisterSubmit} className="space-y-3.5">
-              {/* Generated Admin ID */}
-              <div>
-                <label className="block text-xs font-semibold text-zinc-300 mb-1">
-                  كود الأدمين المولد تلقائياً (Admin ID)
-                </label>
-                <div className="flex items-center gap-2">
-                  <div className="relative flex-1">
-                    <KeyRound className="w-4 h-4 text-zinc-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                    <input
-                      type="text"
-                      readOnly
-                      value={generatedId}
-                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 pr-10 text-amber-400 font-mono font-bold text-sm focus:outline-none"
-                    />
+            {registeredSuccessAdmin ? (
+              /* Success View */
+              <div className="space-y-4">
+                <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-10 h-10 rounded-xl bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center justify-center font-bold">
+                      <CheckCircle className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-extrabold text-white">تم إصدار الترخيص وتسجيل المقاول بنجاح!</h3>
+                      <p className="text-[11px] text-emerald-400/90 font-medium">تم إنشاء فضاء العمل وحفظ السجل المركزي</p>
+                    </div>
                   </div>
                   <button
-                    type="button"
-                    onClick={handleRegenerateId}
-                    className="p-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 transition-colors"
-                    title="توليد كود آخر"
+                    onClick={() => {
+                      setRegisteredSuccessAdmin(null);
+                      setIsRegisterModalOpen(false);
+                    }}
+                    className="text-zinc-400 hover:text-white p-1 rounded-lg"
                   >
-                    <RefreshCw className="w-4 h-4" />
+                    <X className="w-5 h-5" />
                   </button>
                 </div>
-              </div>
 
-              {/* Name & Company */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-300 mb-1">
-                    اسم المقاول / المسير <span className="text-amber-400">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
-                    placeholder="مثال: يوسف الإدريسي"
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-amber-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-300 mb-1">
-                    اسم المقاولة / الشركة
-                  </label>
-                  <input
-                    type="text"
-                    value={newCompanyName}
-                    onChange={(e) => setNewCompanyName(e.target.value)}
-                    placeholder="مثال: سوس للبناء SARL"
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-amber-500"
-                  />
-                </div>
-              </div>
+                {/* Account Details Box */}
+                <div className="p-4 rounded-xl bg-zinc-950 border border-zinc-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-zinc-400 font-semibold">كود الأدمين الخاص بالمقاول:</span>
+                    <button
+                      onClick={() => copyToClipboard(registeredSuccessAdmin.id, registeredSuccessAdmin.id, 'id')}
+                      className="px-3 py-1.5 rounded-lg bg-zinc-900 border border-amber-500/40 text-amber-400 font-mono font-black text-sm flex items-center gap-1.5 hover:border-amber-400"
+                      title="نسخ الكود"
+                    >
+                      <span>{registeredSuccessAdmin.id}</span>
+                      {copiedId === registeredSuccessAdmin.id ? (
+                        <Check className="w-3.5 h-3.5 text-emerald-400" />
+                      ) : (
+                        <Copy className="w-3.5 h-3.5 opacity-60" />
+                      )}
+                    </button>
+                  </div>
 
-              {/* Email & Phone */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-300 mb-1">
-                    البريد الإلكتروني <span className="text-amber-400">*</span>
-                  </label>
-                  <input
-                    type="email"
-                    required
-                    value={newEmail}
-                    onChange={(e) => setNewEmail(e.target.value)}
-                    placeholder="client@entreprise.com"
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-amber-500"
-                  />
+                  <div className="grid grid-cols-2 gap-2.5 pt-2 border-t border-zinc-800/80 text-xs">
+                    <div>
+                      <span className="text-zinc-500 block text-[11px]">المقاول المسجل:</span>
+                      <span className="text-white font-bold">{registeredSuccessAdmin.name}</span>
+                    </div>
+                    <div>
+                      <span className="text-zinc-500 block text-[11px]">الرول والصلاحية:</span>
+                      <span className="text-amber-400 font-bold">مدير عام / مقاول</span>
+                    </div>
+                    <div>
+                      <span className="text-zinc-500 block text-[11px]">البريد الإلكتروني:</span>
+                      <span className="text-zinc-300 truncate block font-mono">{registeredSuccessAdmin.email}</span>
+                    </div>
+                    <div>
+                      <span className="text-zinc-500 block text-[11px]">الهاتف (واتساب):</span>
+                      <span className="text-zinc-200 font-mono">{registeredSuccessAdmin.phone || 'غير مسجل'}</span>
+                    </div>
+                    <div className="col-span-2 p-2 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-between">
+                      <div>
+                        <span className="text-[11px] text-zinc-400 block">نوع الاشتراك والمدة التلقائية:</span>
+                        <span className="text-xs font-bold text-amber-300">
+                          {registeredSuccessAdmin.subscription?.tier === 'trial_3days'
+                            ? 'اشتراك تجريبي (3 أيام تلقائياً)'
+                            : registeredSuccessAdmin.subscription?.tier === 'monthly'
+                            ? 'اشتراك شهري (30 يوماً)'
+                            : 'اشتراك سنوي (365 يوماً)'}
+                        </span>
+                      </div>
+                      <div className="text-left">
+                        <span className="text-[10px] text-zinc-500 block">ينتهي في:</span>
+                        <span className="text-xs font-mono text-zinc-300">
+                          {registeredSuccessAdmin.subscription?.endDate
+                            ? new Date(registeredSuccessAdmin.subscription.endDate).toLocaleDateString('ar-MA')
+                            : '—'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-xs font-semibold text-zinc-300 mb-1">
-                    الهاتف (WhatsApp)
-                  </label>
-                  <input
-                    type="text"
-                    value={newPhone}
-                    onChange={(e) => setNewPhone(e.target.value)}
-                    placeholder="06XXXXXXXX"
-                    className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-amber-500"
-                  />
+
+                {/* Direct WhatsApp Call to Action */}
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    onClick={() => handleShareWhatsApp(registeredSuccessAdmin)}
+                    className="w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 transition-all cursor-pointer"
+                  >
+                    <MessageCircle className="w-5 h-5 fill-current" />
+                    <span>إرسال كود الأدمين وتفاصيل الدخول عبر WhatsApp للمقاول</span>
+                  </button>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => copyToClipboard(generateInviteMessage(registeredSuccessAdmin), registeredSuccessAdmin.id, 'invite')}
+                      className="flex-1 py-2 px-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-semibold flex items-center justify-center gap-1.5 border border-zinc-700 transition-colors"
+                    >
+                      {copiedInvite === registeredSuccessAdmin.id ? (
+                        <Check className="w-3.5 h-3.5 text-emerald-400" />
+                      ) : (
+                        <Copy className="w-3.5 h-3.5" />
+                      )}
+                      <span>{copiedInvite === registeredSuccessAdmin.id ? 'تم نسخ الرسالة!' : 'نسخ نص الدعوة'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRegisteredSuccessAdmin(null);
+                        setGeneratedId(generateUniqueAdminId(adminAccounts.map(a => a.id)));
+                      }}
+                      className="py-2 px-3.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 text-xs font-bold transition-colors"
+                    >
+                      تسجيل مقاول آخر +
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRegisteredSuccessAdmin(null);
+                        setIsRegisterModalOpen(false);
+                      }}
+                      className="py-2 px-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white text-xs font-semibold transition-colors"
+                    >
+                      إغلاق
+                    </button>
+                  </div>
                 </div>
               </div>
+            ) : (
+              /* Registration Form */
+              <>
+                <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-9 h-9 rounded-xl bg-amber-500/15 text-amber-400 border border-amber-500/30 flex items-center justify-center font-bold">
+                      <Plus className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-extrabold text-white">إصدار ترخيص / تسجيل مدير عام جديد</h3>
+                      <p className="text-[11px] text-zinc-400">توليد كود أدمين وإعداد فضاء العمل المستقل للمقاول</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setIsRegisterModalOpen(false)}
+                    className="text-zinc-400 hover:text-white p-1 rounded-lg"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
 
-              {/* Notes */}
-              <div>
-                <label className="block text-xs font-semibold text-zinc-300 mb-1">
-                  ملاحظات أو نوع الاشتراك
-                </label>
-                <input
-                  type="text"
-                  value={newNotes}
-                  onChange={(e) => setNewNotes(e.target.value)}
-                  placeholder="مثال: باقة سنوية - دفع عبر تحويل بنكي"
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-amber-500"
-                />
-              </div>
+                <form onSubmit={handleRegisterSubmit} className="space-y-3.5">
+                  {/* Generated Admin ID */}
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-300 mb-1">
+                      كود الأدمين المولد تلقائياً (Admin ID)
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <div className="relative flex-1">
+                        <KeyRound className="w-4 h-4 text-zinc-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                        <input
+                          type="text"
+                          readOnly
+                          value={generatedId}
+                          className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 pr-10 text-amber-400 font-mono font-bold text-sm focus:outline-none"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleRegenerateId}
+                        className="p-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 transition-colors"
+                        title="توليد كود آخر"
+                      >
+                        <RefreshCw className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
 
-              <div className="pt-2 flex items-center justify-end gap-2 border-t border-zinc-800">
-                <button
-                  type="button"
-                  onClick={() => setIsRegisterModalOpen(false)}
-                  className="py-2 px-4 rounded-xl text-zinc-400 hover:text-white text-xs font-semibold"
-                >
-                  إلغاء
-                </button>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="py-2 px-5 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-xs flex items-center gap-1.5 transition-all shadow-md shadow-amber-500/20 disabled:opacity-50"
-                >
-                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                  <span>حفظ وإصدار الترخيص الآن</span>
-                </button>
-              </div>
-            </form>
+                  {/* Role Selection (Single option: General Manager / Contractor) */}
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-300 mb-1">
+                      الرول / الصلاحية الممنوحة (Role) <span className="text-amber-400">*</span>
+                    </label>
+                    <div className="p-2.5 rounded-xl bg-zinc-950 border border-amber-500/30 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Shield className="w-4 h-4 text-amber-400 shrink-0" />
+                        <span className="text-xs font-bold text-amber-300">
+                          مدير عام / مقاول (Directeur Général / Entrepreneur)
+                        </span>
+                      </div>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 font-semibold border border-amber-500/30">
+                        اختيار وحيد معتمد
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-zinc-500 mt-1">
+                      صلاحية وحيدة للمالك العام لترخيص المقاولين. المقاول بدوره له خيار وحيد لتعيين فريقه وهو (مشرف ورش).
+                    </p>
+                  </div>
+
+                  {/* Name & Company */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-zinc-300 mb-1">
+                        اسم المقاول / المسير <span className="text-amber-400">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={newName}
+                        onChange={(e) => setNewName(e.target.value)}
+                        placeholder="مثال: يوسف الإدريسي"
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-amber-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-zinc-300 mb-1">
+                        اسم المقاولة / الشركة
+                      </label>
+                      <input
+                        type="text"
+                        value={newCompanyName}
+                        onChange={(e) => setNewCompanyName(e.target.value)}
+                        placeholder="مثال: سوس للبناء SARL"
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-amber-500"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Email & Phone */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-zinc-300 mb-1">
+                        البريد الإلكتروني <span className="text-amber-400">*</span>
+                      </label>
+                      <input
+                        type="email"
+                        required
+                        value={newEmail}
+                        onChange={(e) => setNewEmail(e.target.value)}
+                        placeholder="client@entreprise.com"
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-amber-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-zinc-300 mb-1 flex items-center justify-between">
+                        <span>رقم الهاتف (WhatsApp)</span>
+                        <span className="text-[10px] text-emerald-400">ضروري للتوصل بالكود</span>
+                      </label>
+                      <div className="relative">
+                        <Phone className="w-3.5 h-3.5 text-zinc-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                        <input
+                          type="tel"
+                          value={newPhone}
+                          onChange={(e) => setNewPhone(e.target.value)}
+                          placeholder="06XXXXXXXX"
+                          className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 pr-9 text-white text-xs focus:outline-none focus:border-amber-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Subscription Tier Selection */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-zinc-300 flex items-center justify-between">
+                      <span>نوع الاشتراك / الباقة الممنوحة: <span className="text-amber-400">*</span></span>
+                      <span className="text-[10px] text-zinc-400">تحدد صلاحية الدخول للمنظومة</span>
+                    </label>
+                    <div className="grid grid-cols-3 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setNewTier('trial_3days')}
+                        className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
+                          newTier === 'trial_3days'
+                            ? 'bg-amber-500/20 border-amber-500 text-amber-300 font-bold shadow-md shadow-amber-500/10'
+                            : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                        }`}
+                      >
+                        <span className="block text-xs font-bold">تجريبي 3 أيام</span>
+                        <span className="block text-[10px] text-amber-400/90 mt-0.5">3 أيام تلقائياً</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setNewTier('monthly')}
+                        className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
+                          newTier === 'monthly'
+                            ? 'bg-amber-500/20 border-amber-500 text-amber-300 font-bold shadow-md shadow-amber-500/10'
+                            : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                        }`}
+                      >
+                        <span className="block text-xs font-bold">اشتراك شهري</span>
+                        <span className="block text-[10px] text-emerald-400 mt-0.5">290 د.م / شهر</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setNewTier('annual')}
+                        className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
+                          newTier === 'annual'
+                            ? 'bg-amber-500/20 border-amber-500 text-amber-300 font-bold shadow-md shadow-amber-500/10'
+                            : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:border-zinc-700'
+                        }`}
+                      >
+                        <span className="block text-xs font-bold">اشتراك سنوي</span>
+                        <span className="block text-[10px] text-amber-400 mt-0.5 font-semibold">خصم 25%</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Automatic Duration Display & Expiry Notice */}
+                  {(() => {
+                    const durationInfo = getTierDurationInfo(newTier);
+                    return (
+                      <div className="p-3 rounded-xl bg-zinc-950 border border-zinc-800 space-y-2 text-xs">
+                        <div className="flex items-center justify-between text-zinc-300 font-semibold border-b border-zinc-800/80 pb-1.5">
+                          <span className="flex items-center gap-1.5 text-amber-400">
+                            <Clock className="w-3.5 h-3.5" />
+                            <span>المدة المحتسبة تلقائياً:</span>
+                          </span>
+                          <span className="font-bold text-white bg-zinc-800 px-2 py-0.5 rounded-md font-mono">
+                            {durationInfo.durationLabel}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 text-[11px] text-zinc-400">
+                          <div>
+                            <span className="text-zinc-500 block">تاريخ البدء:</span>
+                            <span className="text-zinc-200 font-medium">{durationInfo.startDateFormatted}</span>
+                          </div>
+                          <div>
+                            <span className="text-zinc-500 block">تاريخ الانتهاء التلقائي:</span>
+                            <span className="text-amber-300 font-bold font-mono">{durationInfo.endDateFormatted}</span>
+                          </div>
+                        </div>
+                        <div
+                          className={`p-2 rounded-lg text-[11px] leading-relaxed ${
+                            newTier === 'trial_3days'
+                              ? 'bg-amber-500/10 text-amber-300 border border-amber-500/25'
+                              : 'bg-zinc-900 text-zinc-300 border border-zinc-800'
+                          }`}
+                        >
+                          {durationInfo.termsNote}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Notes */}
+                  <div>
+                    <label className="block text-xs font-semibold text-zinc-300 mb-1">
+                      ملاحظات أو تفاصيل إضافية
+                    </label>
+                    <input
+                      type="text"
+                      value={newNotes}
+                      onChange={(e) => setNewNotes(e.target.value)}
+                      placeholder="مثال: مقاول فيلات - تفعيل بعد تحويل بنكي"
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-white text-xs focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+
+                  <div className="pt-2 flex items-center justify-end gap-2 border-t border-zinc-800">
+                    <button
+                      type="button"
+                      onClick={() => setIsRegisterModalOpen(false)}
+                      className="py-2 px-4 rounded-xl text-zinc-400 hover:text-white text-xs font-semibold cursor-pointer"
+                    >
+                      إلغاء
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className="py-2.5 px-5 rounded-xl bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-zinc-950 font-bold text-xs flex items-center gap-1.5 transition-all shadow-md shadow-amber-500/20 disabled:opacity-50 cursor-pointer"
+                    >
+                      {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                      <span>حفظ وإصدار الترخيص الآن</span>
+                    </button>
+                  </div>
+                </form>
+              </>
+            )}
           </div>
         </div>
       )}

@@ -26,7 +26,8 @@ import {
   Receipt,
   Truck,
   Layers,
-  DollarSign
+  DollarSign,
+  Shield
 } from 'lucide-react';
 
 export const TenantSupervisorManagerView: React.FC = () => {
@@ -475,6 +476,27 @@ export const TenantSupervisorManagerView: React.FC = () => {
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4 text-xs">
+              {/* Role Selection (Single Option for Contractor: Supervisor) */}
+              <div>
+                <label className="block text-zinc-300 font-bold mb-1">
+                  الرول / المنصب الوظيفي (Role) <span className="text-amber-400">*</span>
+                </label>
+                <div className="p-2.5 rounded-xl bg-zinc-950 border border-amber-500/30 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Shield className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span className="text-xs font-bold text-amber-300">
+                      مشرف ورش (Chef de Chantier / Conducteur de Travaux)
+                    </span>
+                  </div>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 font-semibold border border-amber-500/30">
+                    اختيار وحيد معتمد للمقاول
+                  </span>
+                </div>
+                <p className="text-[10px] text-zinc-500 mt-1">
+                  بصفتك مقاولاً / مديراً عاماً، يقتصر دور أعضاء فريقك في المنظومة على رول (مشرف ورش) لإدارة وتتبع الأوراش المحددة لهم.
+                </p>
+              </div>
+
               {/* Name & Phone */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>

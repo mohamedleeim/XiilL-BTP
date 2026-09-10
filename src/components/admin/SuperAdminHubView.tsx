@@ -27,15 +27,20 @@ import {
   Zap,
   Calendar,
   Upload,
-  Download
+  Download,
+  MessageCircle,
+  Phone,
+  Shield,
+  Clock
 } from 'lucide-react';
-import { generateUniqueAdminId, SUPER_ADMIN_EMAIL } from '../../services/googleWorkspace';
-import { SupervisorPermissions, SubscriptionTier } from '../../types';
+import { generateUniqueAdminId, SUPER_ADMIN_EMAIL, buildAdminWhatsAppUrl, buildAdminWhatsAppMessage } from '../../services/googleWorkspace';
+import { SupervisorPermissions, SubscriptionTier, AdminAccount } from '../../types';
 import { 
   formatTierLabel, 
   computeAutoStatus, 
   formatSheetDate, 
-  calculateDaysRemaining 
+  calculateDaysRemaining,
+  getTierDurationInfo
 } from '../../services/subscriptionPlans';
 
 export const SuperAdminHubView: React.FC = () => {
@@ -84,6 +89,13 @@ export const SuperAdminHubView: React.FC = () => {
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [copiedInvite, setCopiedInvite] = useState<string | null>(null);
+  const [registeredAdminInfo, setRegisteredAdminInfo] = useState<AdminAccount | null>(null);
+
+  const handleShareWhatsApp = (admin: AdminAccount) => {
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    const url = buildAdminWhatsAppUrl(admin.phone, admin, origin);
+    window.open(url, '_blank');
+  };
 
   const handlePushAdmins = async () => {
     setIsPushingAdmins(true);
@@ -181,10 +193,12 @@ export const SuperAdminHubView: React.FC = () => {
         name: newName.trim(),
         companyName: newCompanyName.trim() || undefined,
         phone: newPhone.trim() || undefined,
+        role: 'admin',
         notes: newNotes.trim() || undefined,
         subscriptionTier: newTier
       });
 
+      setRegisteredAdminInfo(created);
       setNotification({
         type: 'success',
         text: `تم تسجيل الأدمين بنجاح بالكود: ${created.id} وإضافته لورقة Admin_Registry في Google Sheets!`
@@ -196,6 +210,7 @@ export const SuperAdminHubView: React.FC = () => {
       setNewCompanyName('');
       setNewPhone('');
       setNewNotes('');
+      setNewTier('trial_3days');
       setGeneratedId(generateUniqueAdminId([...adminAccounts.map(a => a.id), created.id]));
     } catch (err: any) {
       setNotification({ type: 'error', text: err.message || 'فشل تسجيل الأدمين الجديد.' });
@@ -419,8 +434,73 @@ export const SuperAdminHubView: React.FC = () => {
             </span>
           </div>
 
+          {/* Success Banner with Direct WhatsApp Share Button */}
+          {registeredAdminInfo && (
+            <div className="p-4 rounded-xl bg-emerald-950/40 border border-emerald-500/40 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+                  <div>
+                    <h4 className="text-xs font-bold text-emerald-300">تم تسجيل المقاول بنجاح! كود الأدمين جاهز للإرسال</h4>
+                    <p className="text-[11px] text-zinc-300">
+                      كود الأدمين: <span className="font-mono font-bold text-amber-400 text-xs px-1.5 py-0.5 rounded bg-zinc-900 border border-amber-500/30">{registeredAdminInfo.id}</span> | {registeredAdminInfo.name} ({registeredAdminInfo.phone || 'بدون هاتف'})
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setRegisteredAdminInfo(null)}
+                  className="text-zinc-400 hover:text-white text-xs px-2 py-1 rounded bg-zinc-800"
+                >
+                  إغلاق
+                </button>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => handleShareWhatsApp(registeredAdminInfo)}
+                  className="py-2 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold text-xs flex items-center gap-2 shadow-md transition-all cursor-pointer"
+                >
+                  <MessageCircle className="w-4 h-4 fill-current" />
+                  <span>إرسال الكود وتفاصيل الدخول عبر WhatsApp للمقاول</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => copyToClipboard(generateInviteMessage(registeredAdminInfo), registeredAdminInfo.id, 'invite')}
+                  className="py-2 px-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-semibold flex items-center gap-1.5 border border-zinc-700 transition-colors"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  <span>نسخ نص الدعوة</span>
+                </button>
+              </div>
+            </div>
+          )}
+
           <form onSubmit={handleRegisterAdmin} className="space-y-4">
             
+            {/* Role Selection (Single Option: General Manager / Contractor) */}
+            <div>
+              <label className="block text-xs font-semibold text-zinc-300 mb-1">
+                الرول / الصلاحية الممنوحة (Role) <span className="text-amber-400">*</span>
+              </label>
+              <div className="p-2.5 rounded-xl bg-zinc-950 border border-amber-500/30 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Shield className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span className="text-xs font-bold text-amber-300">
+                    مدير عام / مقاول (Directeur Général / Entrepreneur)
+                  </span>
+                </div>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 font-semibold border border-amber-500/30">
+                  اختيار وحيد معتمد
+                </span>
+              </div>
+              <p className="text-[10px] text-zinc-500 mt-1">
+                صلاحية وحيدة للمالك العام لترخيص المقاولين؛ وعند المقاول سيكون له اختيار وحيد وهو تعيين مشرف ورش.
+              </p>
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {/* Email */}
               <div className="space-y-1">
@@ -468,16 +548,20 @@ export const SuperAdminHubView: React.FC = () => {
 
               {/* Phone */}
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-zinc-300">
-                  رقم الهاتف (للتواصل والواتساب)
+                <label className="text-xs font-semibold text-zinc-300 flex items-center justify-between">
+                  <span>رقم الهاتف (للتواصل والواتساب)</span>
+                  <span className="text-[10px] text-emerald-400">ضروري لإرسال الكود عبر واتساب</span>
                 </label>
-                <input
-                  type="tel"
-                  placeholder="0661xxxxxx"
-                  value={newPhone}
-                  onChange={(e) => setNewPhone(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-700 focus:border-amber-500 text-white text-xs placeholder:text-zinc-600 focus:outline-none"
-                />
+                <div className="relative">
+                  <Phone className="w-3.5 h-3.5 text-zinc-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    type="tel"
+                    placeholder="0661xxxxxx"
+                    value={newPhone}
+                    onChange={(e) => setNewPhone(e.target.value)}
+                    className="w-full px-3 py-2 pr-9 rounded-xl bg-zinc-950 border border-zinc-700 focus:border-amber-500 text-white text-xs placeholder:text-zinc-600 focus:outline-none"
+                  />
+                </div>
               </div>
             </div>
 
@@ -521,7 +605,7 @@ export const SuperAdminHubView: React.FC = () => {
                   }`}
                 >
                   <span className="block text-xs">تجريبية 3 أيام</span>
-                  <span className="block text-[10px] text-zinc-400 mt-0.5">مجانية للتجربة</span>
+                  <span className="block text-[10px] text-amber-400/90 mt-0.5">3 أيام تلقائياً</span>
                 </button>
 
                 <button
@@ -551,6 +635,43 @@ export const SuperAdminHubView: React.FC = () => {
                 </button>
               </div>
             </div>
+
+            {/* Automatic Duration Display & Expiry Notice */}
+            {(() => {
+              const durationInfo = getTierDurationInfo(newTier);
+              return (
+                <div className="p-3 rounded-xl bg-zinc-950 border border-zinc-800 space-y-2 text-xs">
+                  <div className="flex items-center justify-between text-zinc-300 font-semibold border-b border-zinc-800/80 pb-1.5">
+                    <span className="flex items-center gap-1.5 text-amber-400">
+                      <Clock className="w-3.5 h-3.5" />
+                      <span>المدة المحتسبة تلقائياً:</span>
+                    </span>
+                    <span className="font-bold text-white bg-zinc-800 px-2 py-0.5 rounded-md font-mono">
+                      {durationInfo.durationLabel}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-[11px] text-zinc-400">
+                    <div>
+                      <span className="text-zinc-500 block">تاريخ البدء:</span>
+                      <span className="text-zinc-200 font-medium">{durationInfo.startDateFormatted}</span>
+                    </div>
+                    <div>
+                      <span className="text-zinc-500 block">تاريخ الانتهاء التلقائي:</span>
+                      <span className="text-amber-300 font-bold font-mono">{durationInfo.endDateFormatted}</span>
+                    </div>
+                  </div>
+                  <div
+                    className={`p-2 rounded-lg text-[11px] leading-relaxed ${
+                      newTier === 'trial_3days'
+                        ? 'bg-amber-500/10 text-amber-300 border border-amber-500/25'
+                        : 'bg-zinc-900 text-zinc-300 border border-zinc-800'
+                    }`}
+                  >
+                    {durationInfo.termsNote}
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Notes */}
             <div className="space-y-1">
@@ -860,6 +981,18 @@ export const SuperAdminHubView: React.FC = () => {
                     <td className="py-3 px-3">
                       <div className="flex items-center justify-center gap-1.5">
                         
+                        {/* Direct WhatsApp Action if phone available */}
+                        {admin.phone && (
+                          <button
+                            onClick={() => handleShareWhatsApp(admin)}
+                            className="px-2 py-1 rounded bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/30 text-[10px] font-medium flex items-center gap-1 cursor-pointer"
+                            title={`إرسال كود الأدمين وتفاصيل الدخول عبر واتساب إلى ${admin.phone}`}
+                          >
+                            <MessageCircle className="w-3 h-3 fill-current" />
+                            <span>واتساب</span>
+                          </button>
+                        )}
+
                         {/* Copy invite message */}
                         <button
                           onClick={() => copyToClipboard(generateInviteMessage(admin), admin.id, 'invite')}

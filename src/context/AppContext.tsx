@@ -29,7 +29,8 @@ import {
 import {
   createDefaultTrialSubscription,
   createMonthlySubscription,
-  createAnnualSubscription
+  createAnnualSubscription,
+  computeAutoStatus
 } from '../services/subscriptionPlans';
 import {
   loadInitialState,
@@ -243,7 +244,7 @@ interface AppContextType {
   switchActiveAdmin: (adminId: string | null) => void;
   loginWithGoogleAdmin: (adminIdCode?: string) => Promise<{ success: boolean; message: string; role: 'super_admin' | 'admin' }>;
   logoutGoogleAdmin: () => Promise<void>;
-  registerNewAdmin: (data: { email: string; name: string; companyName?: string; phone?: string; notes?: string; subscriptionTier?: SubscriptionTier }) => Promise<AdminAccount>;
+  registerNewAdmin: (data: { email: string; name: string; companyName?: string; phone?: string; role?: 'admin' | 'super_admin'; notes?: string; subscriptionTier?: SubscriptionTier }) => Promise<AdminAccount>;
   updateAdminStatus: (adminId: string, status: 'active' | 'suspended') => void;
   deleteAdmin: (adminId: string) => Promise<{ success: boolean; message: string }>;
   
@@ -603,6 +604,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     if (found.status === 'suspended') {
       throw new Error('هذا الحساب مجمد حالياً. يرجى التواصل مع إدارة المنظومة.');
+    }
+
+    // Check automatic subscription expiration
+    const autoStatus = computeAutoStatus(found.subscription, found.status);
+    if (autoStatus === 'expired') {
+      const isTrial = found.subscription?.tier === 'trial_3days';
+      const expiredMsg = isTrial
+        ? 'انتهت الفترة التجريبية (3 أيام). تم إرجاع الحساب للوضع الافتراضي المغلق، وليس لك الحق في دخول النظام إلا بعد الاشتراك في الباقة الشهرية أو السنوية. يرجى التواصل مع إدارة المنظومة لتفعيل اشتراكك.'
+        : 'انتهت صلاحية اشتراكك في المنظومة. يرجى تجديد أو تفعيل الباقة الشهرية أو السنوية للتمكن من الدخول واستئناف العمل.';
+      throw new Error(expiredMsg);
     }
 
     const session: ActiveSession = {
@@ -2252,6 +2263,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           throw new Error('تم تجميد هذا الحساب من طرف المالك العام للمنظومة.');
         }
 
+        const autoStatus = computeAutoStatus(matchedAdmin.subscription, matchedAdmin.status);
+        if (autoStatus === 'expired') {
+          const isTrial = matchedAdmin.subscription?.tier === 'trial_3days';
+          const expiredMsg = isTrial
+            ? 'انتهت الفترة التجريبية (3 أيام). تم إرجاع الحساب للوضع الافتراضي المغلق، وليس لك الحق في دخول النظام إلا بعد الاشتراك في الباقة الشهرية أو السنوية. يرجى التواصل مع إدارة المنظومة لتفعيل اشتراكك.'
+            : 'انتهت صلاحية اشتراكك في المنظومة. يرجى تجديد أو تفعيل الباقة الشهرية أو السنوية للتمكن من الدخول واستئناف العمل.';
+          throw new Error(expiredMsg);
+        }
+
         if (adminIdCode && adminIdCode.trim().toUpperCase() !== matchedAdmin.id.toUpperCase()) {
           throw new Error(`كود الأدمين المدخل (${adminIdCode}) غير متطابق مع كود هذا الحساب.`);
         }
@@ -2342,6 +2362,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     name: string;
     companyName?: string;
     phone?: string;
+    role?: 'admin' | 'super_admin';
     notes?: string;
     subscriptionTier?: SubscriptionTier;
   }): Promise<AdminAccount> => {
@@ -2358,7 +2379,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       name: data.name.trim(),
       companyName: data.companyName?.trim(),
       phone: data.phone?.trim(),
-      role: 'admin',
+      role: data.role || 'admin',
       status: 'active',
       createdAt: new Date().toISOString(),
       notes: data.notes?.trim(),
