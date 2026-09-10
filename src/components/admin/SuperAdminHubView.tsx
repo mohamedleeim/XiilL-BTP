@@ -54,6 +54,7 @@ export const SuperAdminHubView: React.FC = () => {
     createMasterSheet,
     inspectAndConnectMasterSheet,
     syncToGoogleSheets,
+    syncAdminsFromMasterSheet,
     isGoogleAuthenticated,
     googleUser,
     resetToCleanData,
@@ -72,12 +73,31 @@ export const SuperAdminHubView: React.FC = () => {
   // UI States
   const [isRegistering, setIsRegistering] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isSyncingAdmins, setIsSyncingAdmins] = useState(false);
   const [isCreatingSheet, setIsCreatingSheet] = useState(false);
   const [isInspectingSheet, setIsInspectingSheet] = useState(false);
   const [sheetInspectionResult, setSheetInspectionResult] = useState<any>(null);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [copiedInvite, setCopiedInvite] = useState<string | null>(null);
+
+  const handleSyncAdmins = async () => {
+    setIsSyncingAdmins(true);
+    try {
+      const res = await syncAdminsFromMasterSheet();
+      setNotification({
+        type: 'success',
+        text: res.message
+      });
+    } catch (err: any) {
+      setNotification({
+        type: 'error',
+        text: err.message || 'فشلت المزامنة من Google Sheets'
+      });
+    } finally {
+      setIsSyncingAdmins(false);
+    }
+  };
 
   // Supervisor Permissions State
   const [selectedSupervisorId, setSelectedSupervisorId] = useState<string>(() => {
@@ -307,19 +327,19 @@ export const SuperAdminHubView: React.FC = () => {
             {/* Clear all mock data button */}
             <button
               onClick={() => {
-                if (window.confirm('هل أنت متأكد من مسح وتصفير كافة البيانات التجريبية والبدء ببيانات فارغة ونظيفة 100%؟')) {
-                  resetToCleanData();
+                if (window.confirm('هل أنت متأكد من تصفير ومسح بيانات الأوراش والعمليات اليومية (مع الحفاظ على حسابات المقاولين المعتمدين)؟')) {
+                  resetToCleanData({ wipeTenants: false });
                   setNotification({
                     type: 'success',
-                    text: 'تم مسح وتصفير كافة البيانات التجريبية بنجاح! المنظومة نظيفة وجاهزة تماماً لإدخال بياناتك الحقيقية.'
+                    text: 'تم تصفير الأوراش والعمليات بنجاح مع الحفاظ على المقاولين المعتمدين (Chantiers = 0).'
                   });
                 }
               }}
               className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 hover:text-red-300 text-xs font-bold transition-colors cursor-pointer"
-              title="تصفير ومسح كافة البيانات التجريبية"
+              title="تصفير الأوراش والعمليات مع الحفاظ على المقاولين"
             >
               <Trash2 className="w-3.5 h-3.5" />
-              <span>تصفير البيانات (0 Données)</span>
+              <span>تصفير الأوراش (0 Données)</span>
             </button>
           </div>
         </div>
@@ -644,6 +664,18 @@ export const SuperAdminHubView: React.FC = () => {
             <p className="text-[11px] text-zinc-400">
               لكل أدمين فضاء مستقل بأوراشه ومصاريفه، يمكنك نسخ كود الأدمين أو رسالة الدعوة لمشاركتها معه
             </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleSyncAdmins}
+              disabled={isSyncingAdmins}
+              className="py-1.5 px-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-100 font-bold border border-zinc-700 text-xs flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+              title="استيراد وتحديث المقاولين المسجلين في الشيت المركزي فوراً"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 text-amber-400 ${isSyncingAdmins ? 'animate-spin' : ''}`} />
+              <span>{isSyncingAdmins ? 'جارِ المزامنة...' : 'مزامنة المقاولين من Google Sheets'}</span>
+            </button>
           </div>
         </div>
 

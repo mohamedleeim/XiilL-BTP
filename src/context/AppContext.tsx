@@ -77,7 +77,8 @@ import {
   BTP_STANDARD_SHEETS,
   SheetValidationResult,
   SUPER_ADMIN_EMAIL,
-  SUPER_ADMIN_MASTER_KEY
+  SUPER_ADMIN_MASTER_KEY,
+  wipeAllSpreadsheetData
 } from '../services/googleWorkspace';
 import { cpsTemplates } from '../db/seedData';
 import { translations } from '../i18n/translations';
@@ -254,6 +255,8 @@ interface AppContextType {
   updateWorkspaceConfig: (config: Partial<WorkspaceConfig>) => void;
   setGuestGoogleSheetUrl: (url: string) => Promise<{ success: boolean; message: string }>;
   syncToGoogleSheets: (targetAdminId?: string) => Promise<{ success: boolean; rowsCount: number; message: string }>;
+  syncAdminsFromMasterSheet: (targetSheetId?: string) => Promise<{ success: boolean; count: number; sheetAdmins: AdminAccount[]; message: string }>;
+  wipeCloudSheetsData: (wipeAdminRegistry?: boolean) => Promise<{ success: boolean; message: string }>;
   createMasterSheet: (title?: string) => Promise<{ id: string; url: string; title?: string; isExisting?: boolean; validation?: SheetValidationResult }>;
   inspectAndConnectMasterSheet: (sheetIdOrUrl?: string) => Promise<SheetValidationResult>;
 
@@ -281,7 +284,7 @@ interface AppContextType {
   sendCustomChatMessage: (message: string) => Promise<boolean>;
 
   // Clean Database Reset
-  resetToCleanData: () => void;
+  resetToCleanData: (options?: { wipeTenants?: boolean; clearGoogleSheets?: boolean }) => Promise<void> | void;
 
   // Platform Super Admin Check & Tenant Supervisor Isolation
   isPlatformSuperAdmin: boolean;
@@ -372,6 +375,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
     return () => unsub();
   }, []);
+
+  // Auto-sync registered admins from Google Sheets Admin_Registry when authenticated
+  useEffect(() => {
+    if (!isGoogleAuthenticated) return;
+    const sheetId = state.workspaceConfig.masterSheetId || KNOWN_MASTER_SPREADSHEET_ID;
+    if (!sheetId) return;
+
+    fetchAdminRegistryFromSheet(sheetId).then(sheetAdmins => {
+      if (sheetAdmins && sheetAdmins.length > 0) {
+        setState(prev => {
+          const superAdmin = prev.adminAccounts.find(a => a.role === 'super_admin') || defaultSuperAdmin;
+          const adminMap = new Map<string, AdminAccount>();
+          adminMap.set(superAdmin.id, superAdmin);
+
+          for (const sa of sheetAdmins) {
+            if (sa.role === 'super_admin') {
+              adminMap.set(superAdmin.id, { ...superAdmin, ...sa, id: superAdmin.id, role: 'super_admin' });
+            } else {
+              const localMatch = prev.adminAccounts.find(a => a.id === sa.id || a.email.toLowerCase() === sa.email.toLowerCase());
+              adminMap.set(sa.id, { ...(localMatch || {}), ...sa });
+            }
+          }
+          const mergedList = Array.from(adminMap.values());
+          const updated = { ...prev, adminAccounts: mergedList };
+          saveStateToStorage(updated);
+          return updated;
+        });
+      }
+    }).catch(e => console.warn('Auto background sync of sheet admins warning:', e));
+  }, [isGoogleAuthenticated, state.workspaceConfig.masterSheetId]);
 
   // Active Authenticated Session
   const [activeSession, setActiveSession] = useState<ActiveSession | null>(() => getStoredSession());
@@ -2418,11 +2451,76 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return { success: true, message: 'تم ربط ملف Google Sheets بنجاح!' };
   };
 
+  const syncAdminsFromMasterSheet = async (targetSheetId?: string): Promise<{
+    success: boolean;
+    count: number;
+    sheetAdmins: AdminAccount[];
+    message: string;
+  }> => {
+    const sheetId = targetSheetId || state.workspaceConfig.masterSheetId || KNOWN_MASTER_SPREADSHEET_ID;
+    if (!sheetId) {
+      throw new Error('يرجى تحديد أو ربط ملف Google Sheets أولاً');
+    }
+    const sheetAdmins = await fetchAdminRegistryFromSheet(sheetId);
+    if (!sheetAdmins || sheetAdmins.length === 0) {
+      return { success: true, count: 0, sheetAdmins: [], message: 'لم يتم العثور على أدمينات مسجلين في الشيت' };
+    }
+
+    setState(prev => {
+      const superAdmin = prev.adminAccounts.find(a => a.role === 'super_admin') || defaultSuperAdmin;
+      const adminMap = new Map<string, AdminAccount>();
+      adminMap.set(superAdmin.id, superAdmin);
+
+      for (const sa of sheetAdmins) {
+        if (sa.role === 'super_admin') {
+          adminMap.set(superAdmin.id, { ...superAdmin, ...sa, id: superAdmin.id, role: 'super_admin' });
+        } else {
+          const localMatch = prev.adminAccounts.find(a => a.id === sa.id || a.email.toLowerCase() === sa.email.toLowerCase());
+          adminMap.set(sa.id, {
+            ...(localMatch || {}),
+            ...sa
+          });
+        }
+      }
+
+      const mergedList = Array.from(adminMap.values());
+      const updated = {
+        ...prev,
+        adminAccounts: mergedList
+      };
+      saveStateToStorage(updated);
+      return updated;
+    });
+
+    const tenantCount = sheetAdmins.filter(a => a.role !== 'super_admin').length;
+    return {
+      success: true,
+      count: tenantCount,
+      sheetAdmins,
+      message: `تمت مزامنة واستيراد ${tenantCount} مقاولين بنجاح من الشيت المركزي!`
+    };
+  };
+
+  const wipeCloudSheetsData = async (wipeAdminRegistry?: boolean) => {
+    const sheetId = state.workspaceConfig.masterSheetId || KNOWN_MASTER_SPREADSHEET_ID;
+    if (!sheetId) throw new Error('لا يوجد ملف Google Sheets مرتبط للتصفير.');
+    return await wipeAllSpreadsheetData(sheetId, { wipeAdminRegistry });
+  };
+
   const syncToGoogleSheets = async (targetAdminId?: string) => {
     const sheetId = state.workspaceConfig.masterSheetId || state.workspaceConfig.guestSheetId;
     if (!sheetId) {
       throw new Error('يرجى تحديد أو إنشاء ملف Google Sheets أولاً.');
     }
+
+    let pulledCount = 0;
+    try {
+      const pullRes = await syncAdminsFromMasterSheet(sheetId);
+      pulledCount = pullRes.count;
+    } catch (e) {
+      console.warn('Auto pull sheet admins non-blocking warning:', e);
+    }
+
     const res = await syncAllDataToGoogleSheets(sheetId, state, targetAdminId || (state.superAdminMode ? 'ALL' : state.currentAdmin?.id));
     setState(prev => ({
       ...prev,
@@ -2432,7 +2530,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       },
       lastSyncTime: new Date().toISOString()
     }));
-    return res;
+    return {
+      ...res,
+      message: pulledCount > 0
+        ? `${res.message} (تم استيراد ومزامنة ${pulledCount} مقاولين من الشيت)`
+        : res.message
+    };
   };
 
   const createMasterSheet = async (title?: string) => {
@@ -2699,9 +2802,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const resetToCleanData = () => {
-    const cleanState = resetDatabaseToClean();
+  const resetToCleanData = async (options?: { wipeTenants?: boolean; clearGoogleSheets?: boolean }) => {
+    let preservedAccounts = state.adminAccounts;
+    if (options?.wipeTenants) {
+      preservedAccounts = [defaultSuperAdmin];
+    }
+    const cleanState = resetDatabaseToClean({
+      wipeTenants: options?.wipeTenants,
+      preserveAccounts: preservedAccounts
+    });
     setState(cleanState);
+
+    if (options?.clearGoogleSheets) {
+      const sheetId = state.workspaceConfig.masterSheetId || KNOWN_MASTER_SPREADSHEET_ID;
+      if (sheetId) {
+        try {
+          await wipeAllSpreadsheetData(sheetId, { wipeAdminRegistry: options?.wipeTenants });
+        } catch (e) {
+          console.warn('Failed to wipe Google Sheets remotely:', e);
+        }
+      }
+    }
   };
 
   return (
@@ -2798,6 +2919,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateWorkspaceConfig,
         setGuestGoogleSheetUrl,
         syncToGoogleSheets,
+        syncAdminsFromMasterSheet,
+        wipeCloudSheetsData,
         createMasterSheet,
         inspectAndConnectMasterSheet,
 

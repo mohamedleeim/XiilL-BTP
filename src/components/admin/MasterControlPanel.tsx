@@ -63,6 +63,8 @@ export const MasterControlPanel: React.FC<MasterControlPanelProps> = ({ onInspec
     createMasterSheet,
     inspectAndConnectMasterSheet,
     syncToGoogleSheets,
+    syncAdminsFromMasterSheet,
+    wipeCloudSheetsData,
     backupToDrive,
     exportBackupJson,
     importBackupJson,
@@ -88,9 +90,29 @@ export const MasterControlPanel: React.FC<MasterControlPanelProps> = ({ onInspec
 
   // UI state
   const [loading, setLoading] = useState(false);
+  const [isSyncingAdmins, setIsSyncingAdmins] = useState(false);
+  const [isWipingCloud, setIsWipingCloud] = useState(false);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [copiedInvite, setCopiedInvite] = useState<string | null>(null);
+
+  const handleSyncAdminsFromSheet = async () => {
+    setIsSyncingAdmins(true);
+    try {
+      const res = await syncAdminsFromMasterSheet();
+      setNotification({
+        type: 'success',
+        text: res.message
+      });
+    } catch (err: any) {
+      setNotification({
+        type: 'error',
+        text: err.message || 'فشلت المزامنة مع الشيت المركزي'
+      });
+    } finally {
+      setIsSyncingAdmins(false);
+    }
+  };
 
   // Sheets Verification & Schema State
   const [isInspecting, setIsInspecting] = useState(false);
@@ -689,6 +711,16 @@ export const MasterControlPanel: React.FC<MasterControlPanelProps> = ({ onInspec
                 </select>
 
                 <button
+                  onClick={handleSyncAdminsFromSheet}
+                  disabled={isSyncingAdmins}
+                  className="py-2 px-3.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-100 font-bold border border-zinc-700 text-xs flex items-center gap-1.5 transition-all shrink-0 cursor-pointer disabled:opacity-50"
+                  title="استيراد وتحديث المقاولين المسجلين في الشيت المركزي فوراً"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 text-amber-400 ${isSyncingAdmins ? 'animate-spin' : ''}`} />
+                  <span>{isSyncingAdmins ? 'جارِ المزامنة...' : 'مزامنة من Google Sheets'}</span>
+                </button>
+
+                <button
                   onClick={() => setIsRegisterModalOpen(true)}
                   className="py-2 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 active:bg-amber-600 font-bold text-zinc-950 shadow-md shadow-amber-500/20 text-xs flex items-center gap-1.5 transition-all shrink-0 cursor-pointer"
                 >
@@ -1163,37 +1195,119 @@ export const MasterControlPanel: React.FC<MasterControlPanelProps> = ({ onInspec
             <div className="border-b border-zinc-800 pb-3">
               <h3 className="text-base font-extrabold text-white flex items-center gap-2">
                 <Trash2 className="w-5 h-5 text-red-400" />
-                <span>صيانة المنظومة وتصفير البيانات التجريبية</span>
+                <span>صيانة المنظومة وخيارات التصفير الدقيقة</span>
               </h3>
               <p className="text-xs text-zinc-400 mt-1 leading-relaxed">
-                إذا أردت البدء ببيانات نظيفة وحقيقية للمبيعات، يمكنك مسح وتصفير كافة البيانات التجريبية (الأوراش والعمال والمصاريف الوهمية) مع الحفاظ على حساب المالك العام.
+                خيارات واضحة ومستقلة لتصفير العمليات التجريبية دون المساس بالحسابات المعتمدة، أو تصفير شامل للمقاولين، أو تفريغ Google Sheets.
               </p>
             </div>
 
-            <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/25 space-y-3">
-              <div className="flex items-center gap-2 text-red-400 font-bold text-sm">
-                <AlertTriangle className="w-4 h-4" />
-                <span>تنبيه هام وحاسم</span>
-              </div>
-              <p className="text-xs text-zinc-300 leading-relaxed">
-                هذا الإجراء سيقوم بحذف الأوراش والمصاريف والعمال المسجلين حالياً والبدء من الصفر. ينصح بأخذ نسخة احتياطية (JSON) قبل التصفير.
-              </p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              
+              {/* Option 1: Reset Operational Data Only (Keep Registered Contractors) */}
+              <div className="p-4 rounded-xl bg-zinc-950 border border-zinc-800 flex flex-col justify-between space-y-4">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-amber-400 font-bold text-sm">
+                    <Building2 className="w-4 h-4" />
+                    <span>1. تصفير الأوراش والعمليات فقط</span>
+                  </div>
+                  <p className="text-xs text-zinc-400 leading-relaxed">
+                    يمسح كافة الأوراش والعمال والمصاريف والـ CPS التجريبية محلياً.
+                    <span className="text-emerald-400 font-semibold block mt-1">
+                      ✓ يحافظ على كافة حسابات المقاولين المعتمدين (سعيد، محمد جالي).
+                    </span>
+                  </p>
+                </div>
 
-              <button
-                onClick={() => {
-                  if (window.confirm('هل أنت متأكد تماماً من تصفير ومسح كافة البيانات التجريبية والبدء ببيانات نظيفة 100%؟')) {
-                    resetToCleanData();
-                    setNotification({
-                      type: 'success',
-                      text: 'تم تصفير المنظومة ومسح البيانات التجريبية بنجاح! المنظومة جاهزة للإنتاج الفعلي.'
-                    });
-                  }
-                }}
-                className="py-2.5 px-4 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs flex items-center gap-2 transition-colors cursor-pointer"
-              >
-                <Trash2 className="w-4 h-4" />
-                <span>تأكيد تصفير كافة البيانات الآن (0 Données)</span>
-              </button>
+                <button
+                  onClick={() => {
+                    if (window.confirm('هل تريد تصفير كافة الأوراش والعمليات اليومية مع الحفاظ على حسابات المقاولين؟')) {
+                      resetToCleanData({ wipeTenants: false });
+                      setNotification({
+                        type: 'success',
+                        text: 'تم تصفير الأوراش والعمليات بنجاح مع الحفاظ على حسابات المقاولين المعتمدين!'
+                      });
+                    }
+                  }}
+                  className="w-full py-2.5 px-3 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 font-bold text-xs transition-colors cursor-pointer"
+                >
+                  تصفير الأوراش فقط (Chantiers = 0)
+                </button>
+              </div>
+
+              {/* Option 2: Full Clean Wipe (0 Tenants & 0 Projects) */}
+              <div className="p-4 rounded-xl bg-zinc-950 border border-red-500/25 flex flex-col justify-between space-y-4">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-red-400 font-bold text-sm">
+                    <Trash2 className="w-4 h-4" />
+                    <span>2. تصفير شامل وحذف التجريبيين</span>
+                  </div>
+                  <p className="text-xs text-zinc-400 leading-relaxed">
+                    يمسح الحساب التجريبي الوهمي "سعيد المقاول" وكافة الأوراش والبيانات.
+                    <span className="text-zinc-300 font-semibold block mt-1">
+                      يبقي فقط حسابك الرئيسي كـ Super Admin جاهزاً لإدخال المقاولين الفعليين.
+                    </span>
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => {
+                    if (window.confirm('تنبيه: هذا الخيار سيحذف الحسابات التجريبية والأوراش بالكامل ويبدأ من الصفر (0 مقاولين تجريبيين و 0 أوراش). هل أنت متأكد؟')) {
+                      resetToCleanData({ wipeTenants: true });
+                      setNotification({
+                        type: 'success',
+                        text: 'تم التصفير الشامل بنجاح! المنظومة نظيفة وجاهزة للمقاولين الحقيقيين.'
+                      });
+                    }
+                  }}
+                  className="w-full py-2.5 px-3 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs transition-colors cursor-pointer shadow-md shadow-red-600/20"
+                >
+                  تصفير شامل للإنتاج (0 Tenants)
+                </button>
+              </div>
+
+              {/* Option 3: Remote Google Sheets Wipe */}
+              <div className="p-4 rounded-xl bg-zinc-950 border border-emerald-500/25 flex flex-col justify-between space-y-4">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-emerald-400 font-bold text-sm">
+                    <FileSpreadsheet className="w-4 h-4" />
+                    <span>3. تفريغ جداول Google Sheets</span>
+                  </div>
+                  <p className="text-xs text-zinc-400 leading-relaxed">
+                    يقوم بمسح وتفريغ صفوف البيانات من ملف Google Sheets المركزي عبر الـ API.
+                    <span className="text-zinc-300 font-semibold block mt-1">
+                      يحافظ 100% على رؤوس الأعمدة وعناوين الجداول وتنسيقها.
+                    </span>
+                  </p>
+                </div>
+
+                <button
+                  onClick={async () => {
+                    if (window.confirm('هل تريد مسح وتفريغ كافة صفوف الأوراش والعمليات في Google Sheets المركزي لتصبح فارغة وجاهزة؟')) {
+                      setIsWipingCloud(true);
+                      try {
+                        const res = await wipeCloudSheetsData(false);
+                        setNotification({
+                          type: 'success',
+                          text: res.message
+                        });
+                      } catch (err: any) {
+                        setNotification({
+                          type: 'error',
+                          text: err.message || 'تعذر تصفير ملف Google Sheets'
+                        });
+                      } finally {
+                        setIsWipingCloud(false);
+                      }
+                    }
+                  }}
+                  disabled={isWipingCloud}
+                  className="w-full py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition-colors cursor-pointer shadow-md shadow-emerald-600/20 disabled:opacity-50"
+                >
+                  {isWipingCloud ? 'جارِ تفريغ الجداول...' : 'تفريغ Google Sheets الآن'}
+                </button>
+              </div>
+
             </div>
           </div>
         )}

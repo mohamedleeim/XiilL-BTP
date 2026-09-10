@@ -13,7 +13,8 @@ import {
   AppState, 
   DriveFileItem, 
   ChatSpaceItem,
-  SubscriptionInfo 
+  SubscriptionInfo,
+  SubscriptionTier
 } from '../types';
 import {
   formatTierLabel,
@@ -962,6 +963,22 @@ export const saveAdminToRegistrySheet = async (
 };
 
 /**
+ * Safe ISO Date parser that never crashes on invalid date strings
+ */
+export const safeIsoDate = (val?: string, fallback?: string): string => {
+  if (!val || typeof val !== 'string') return fallback || new Date().toISOString();
+  const trimmed = val.trim();
+  if (!trimmed || trimmed === 'لم يدخل بعد') return fallback || new Date().toISOString();
+  try {
+    const d = new Date(trimmed);
+    if (isNaN(d.getTime())) return fallback || new Date().toISOString();
+    return d.toISOString();
+  } catch {
+    return fallback || new Date().toISOString();
+  }
+};
+
+/**
  * Read all admins registered in the Admin_Registry sheet
  */
 export const fetchAdminRegistryFromSheet = async (
@@ -977,15 +994,46 @@ export const fetchAdminRegistryFromSheet = async (
 
     if (!res.ok) return [];
     const data = await res.json();
-    if (!data.values) return [];
+    if (!data.values || !Array.isArray(data.values)) return [];
 
     return data.values.map((row: string[]) => {
-      const isExtended = row.length >= 10;
-      
-      let tier = isExtended ? parseTierLabel(row[4]) : 'trial_3days';
-      let startDate = isExtended && row[5] ? new Date(row[5]).toISOString() : new Date().toISOString();
-      let endDate = isExtended && row[6] ? new Date(row[6]).toISOString() : new Date(Date.now() + 3 * 86400000).toISOString();
-      let rawStatus = isExtended ? row[7] : row[4];
+      if (!row || !row[0] || !row[1]) return null;
+
+      const adminId = (row[0] || '').trim();
+      const email = (row[1] || '').trim().toLowerCase();
+      const name = (row[2] || '').trim() || 'مدير عام';
+      const role = ((row[3] || '').trim().toLowerCase() === 'super_admin' ? 'super_admin' : 'admin') as 'super_admin' | 'admin';
+
+      // Detect if row is in legacy 7-column schema (where row[4] was status: 'active', 'نشط', etc.)
+      const col4 = (row[4] || '').trim().toLowerCase();
+      const isLegacy = row.length <= 8 || ['active', 'نشط', 'suspended', 'معلق', 'expired', 'منتهي'].includes(col4);
+
+      let tier: SubscriptionTier = 'trial_3days';
+      let startDate = new Date().toISOString();
+      let endDate = new Date(Date.now() + 30 * 86400000).toISOString();
+      let rawStatus = 'active';
+      let createdAt = new Date().toISOString();
+      let lastLoginAt: string | undefined = undefined;
+      let notes = '';
+
+      if (isLegacy) {
+        rawStatus = (row[4] || 'active').trim();
+        createdAt = safeIsoDate(row[5], new Date().toISOString());
+        startDate = createdAt;
+        const startMs = new Date(startDate).getTime();
+        endDate = new Date(startMs + 30 * 86400000).toISOString();
+        tier = 'monthly';
+        lastLoginAt = row[6] && row[6] !== 'لم يدخل بعد' ? row[6] : undefined;
+        notes = (row[7] || '').trim();
+      } else {
+        tier = parseTierLabel(row[4]);
+        startDate = safeIsoDate(row[5], new Date().toISOString());
+        endDate = safeIsoDate(row[6], new Date(Date.now() + (tier === 'annual' ? 365 : tier === 'monthly' ? 30 : 3) * 86400000).toISOString());
+        rawStatus = (row[7] || 'active').trim();
+        createdAt = safeIsoDate(row[8], startDate);
+        lastLoginAt = row[9] && row[9] !== 'لم يدخل بعد' ? row[9] : undefined;
+        notes = (row[10] || '').trim();
+      }
 
       const subscription: SubscriptionInfo = {
         tier: tier as any,
@@ -1001,21 +1049,74 @@ export const fetchAdminRegistryFromSheet = async (
       }
 
       return {
-        id: row[0] || '',
-        email: (row[1] || '').trim().toLowerCase(),
-        name: row[2] || '',
-        role: (row[3] === 'super_admin' ? 'super_admin' : 'admin') as 'super_admin' | 'admin',
+        id: adminId,
+        email,
+        name,
+        role,
         status: autoStatus,
         subscription,
-        createdAt: (isExtended ? row[8] : row[5]) || new Date().toISOString(),
-        lastLoginAt: isExtended ? row[9] : row[6],
-        notes: (isExtended ? row[10] : row[7]) || ''
+        createdAt,
+        lastLoginAt,
+        notes
       };
-    }).filter((a: AdminAccount) => Boolean(a.id && a.email));
+    }).filter((a): a is AdminAccount => Boolean(a && a.id && a.email));
   } catch (err) {
     console.error('Failed to read Admin Registry from sheet:', err);
     return [];
   }
+};
+
+/**
+ * Clear data rows in operational tabs (Chantiers, Pointage, Paie, Achats, Depenses, Decomptes)
+ * Keeps header rows (A1) untouched.
+ */
+export const wipeAllSpreadsheetData = async (
+  spreadsheetId: string,
+  options?: { wipeAdminRegistry?: boolean }
+): Promise<{ success: boolean; message: string }> => {
+  const token = getAccessToken();
+  if (!token) throw new Error('يرجى تسجيل الدخول بـ Gmail لإتمام عملية تصفير Google Sheets');
+
+  const rangesToClear = [
+    'Chantiers_Projets!A2:Z2000',
+    'Bordereau_CPS!A2:Z2000',
+    'Pointage_Journalier!A2:Z2000',
+    'Paie_Ouvriers!A2:Z2000',
+    'Achats_Fournisseurs!A2:Z2000',
+    'Depenses_Chantier!A2:Z2000',
+    'Decomptes_Clients!A2:Z2000',
+    'المشاريع_الأوراش!A2:Z2000',
+    'بنود_CPS_والبردورو!A2:Z2000',
+    'Pointage_والحضور!A2:Z2000',
+    'خلاص_العمال_والأجور!A2:Z2000',
+    'المشتريات_والموردين!A2:Z2000',
+    'المصاريف_اليومية!A2:Z2000',
+    'دفعات_الزبناء_Décomptes!A2:Z2000'
+  ];
+
+  if (options?.wipeAdminRegistry) {
+    // Only clear non-super-admin rows in Admin_Registry (from row 3 onwards)
+    rangesToClear.push('Admin_Registry!A3:K500');
+    rangesToClear.push('سجل_الأدمينات!A3:K500');
+  }
+
+  for (const range of rangesToClear) {
+    try {
+      await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(range)}:clear`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+    } catch (e) {
+      console.warn(`Failed to clear range ${range}:`, e);
+    }
+  }
+
+  return {
+    success: true,
+    message: options?.wipeAdminRegistry
+      ? 'تم تفريغ وتصفير جداول Google Sheets وتصفير المقاولين التجريبيين بنجاح مع الحفاظ على رؤوس الأعمدة والمالك العام.'
+      : 'تم تفريغ وتصفير بيانات الأوراش والعمليات في Google Sheets بنجاح مع الحفاظ على حسابات المشتركين ورؤوس الأعمدة.'
+  };
 };
 
 /**

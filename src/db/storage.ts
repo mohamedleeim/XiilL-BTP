@@ -107,7 +107,7 @@ export const saveStoredSession = (session: ActiveSession | null): void => {
   }
 };
 
-export const resetDatabaseToClean = (): AppState => {
+export const resetDatabaseToClean = (options?: { wipeTenants?: boolean; preserveAccounts?: AdminAccount[] }): AppState => {
   try {
     localStorage.removeItem('ochanti_maroc_v1_data');
     localStorage.removeItem('ochanti_maroc_v2_live');
@@ -116,10 +116,18 @@ export const resetDatabaseToClean = (): AppState => {
     console.error('Failed to clear localStorage keys:', e);
   }
 
+  // Determine admin accounts to preserve
+  let accountsToKeep = [defaultSuperAdmin];
+  if (options?.preserveAccounts && options.preserveAccounts.length > 0) {
+    accountsToKeep = options.preserveAccounts;
+  } else if (!options?.wipeTenants) {
+    accountsToKeep = [defaultSuperAdmin];
+  }
+
   const cleanState: AppState = {
     users: initialUsers,
     currentUser: initialUsers[0],
-    adminAccounts: [defaultSuperAdmin, sampleClientAdmin],
+    adminAccounts: accountsToKeep,
     currentAdmin: defaultSuperAdmin,
     workspaceConfig: defaultWorkspaceConfig,
     superAdminMode: true,
