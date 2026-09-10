@@ -30,6 +30,7 @@ import {
   Activity,
   Database,
   Download,
+  Upload,
   UploadCloud,
   X,
   AlertCircle,
@@ -64,6 +65,7 @@ export const MasterControlPanel: React.FC<MasterControlPanelProps> = ({ onInspec
     inspectAndConnectMasterSheet,
     syncToGoogleSheets,
     syncAdminsFromMasterSheet,
+    pushAdminsToMasterSheet,
     wipeCloudSheetsData,
     backupToDrive,
     exportBackupJson,
@@ -91,13 +93,34 @@ export const MasterControlPanel: React.FC<MasterControlPanelProps> = ({ onInspec
   // UI state
   const [loading, setLoading] = useState(false);
   const [isSyncingAdmins, setIsSyncingAdmins] = useState(false);
+  const [isPushingAdmins, setIsPushingAdmins] = useState(false);
   const [isWipingCloud, setIsWipingCloud] = useState(false);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [copiedInvite, setCopiedInvite] = useState<string | null>(null);
 
+  const handlePushAdminsToSheet = async () => {
+    setIsPushingAdmins(true);
+    setNotification(null);
+    try {
+      const res = await pushAdminsToMasterSheet();
+      setNotification({
+        type: 'success',
+        text: res.message
+      });
+    } catch (err: any) {
+      setNotification({
+        type: 'error',
+        text: err?.message || 'فشل دفع قائمة المقاولين إلى Google Sheets'
+      });
+    } finally {
+      setIsPushingAdmins(false);
+    }
+  };
+
   const handleSyncAdminsFromSheet = async () => {
     setIsSyncingAdmins(true);
+    setNotification(null);
     try {
       const res = await syncAdminsFromMasterSheet();
       setNotification({
@@ -711,13 +734,23 @@ export const MasterControlPanel: React.FC<MasterControlPanelProps> = ({ onInspec
                 </select>
 
                 <button
+                  onClick={handlePushAdminsToSheet}
+                  disabled={isPushingAdmins}
+                  className="py-2 px-3.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold border border-amber-400 text-xs flex items-center gap-1.5 transition-all shrink-0 cursor-pointer disabled:opacity-50"
+                  title="دفع وتحديث قائمة المقاولين الحالية في النظام إلى ملف Google Sheets ومسح أي مقاول محذوف"
+                >
+                  <Upload className={`w-3.5 h-3.5 ${isPushingAdmins ? 'animate-spin' : ''}`} />
+                  <span>{isPushingAdmins ? 'جارِ الدفع للشيت...' : 'دفع المقاولين للشيت (نظام ← شيت)'}</span>
+                </button>
+
+                <button
                   onClick={handleSyncAdminsFromSheet}
                   disabled={isSyncingAdmins}
                   className="py-2 px-3.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-100 font-bold border border-zinc-700 text-xs flex items-center gap-1.5 transition-all shrink-0 cursor-pointer disabled:opacity-50"
-                  title="استيراد وتحديث المقاولين المسجلين في الشيت المركزي فوراً"
+                  title="استيراد وتحديث المقاولين المسجلين في الشيت المركزي فوراً إلى النظام"
                 >
-                  <RefreshCw className={`w-3.5 h-3.5 text-amber-400 ${isSyncingAdmins ? 'animate-spin' : ''}`} />
-                  <span>{isSyncingAdmins ? 'جارِ المزامنة...' : 'مزامنة من Google Sheets'}</span>
+                  <Download className={`w-3.5 h-3.5 text-amber-400 ${isSyncingAdmins ? 'animate-spin' : ''}`} />
+                  <span>{isSyncingAdmins ? 'جارِ السحب...' : 'سحب من الشيت (شيت ← نظام)'}</span>
                 </button>
 
                 <button
@@ -851,17 +884,24 @@ export const MasterControlPanel: React.FC<MasterControlPanelProps> = ({ onInspec
                         )}
 
                         <button
-                          onClick={() => {
-                            if (window.confirm(`هل أنت متأكد من حذف حساب الأدمين (${tenant.name} - ${tenant.id})؟`)) {
-                              deleteAdmin(tenant.id);
-                              setNotification({
-                                type: 'success',
-                                text: `تم حذف حساب الأدمين (${tenant.name}) بنجاح.`
-                              });
+                          onClick={async () => {
+                            if (window.confirm(`هل أنت متأكد من حذف حساب الأدمين (${tenant.name} - ${tenant.id})؟ سيتم حذفه من المنظومة ومسحه كلياً من ملف Google Sheets المركزي.`)) {
+                              try {
+                                const res = await deleteAdmin(tenant.id);
+                                setNotification({
+                                  type: 'success',
+                                  text: res.message
+                                });
+                              } catch (err: any) {
+                                setNotification({
+                                  type: 'error',
+                                  text: err?.message || 'فشل حذف المقاول'
+                                });
+                              }
                             }
                           }}
                           className="p-1.5 rounded-lg text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors"
-                          title="حذف هذا الحساب"
+                          title="حذف هذا الحساب ومسحه من Google Sheets"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -932,10 +972,11 @@ export const MasterControlPanel: React.FC<MasterControlPanelProps> = ({ onInspec
                   <button
                     onClick={handleSyncToSheets}
                     disabled={loading || isInspecting}
-                    className="py-2 px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer"
+                    className="py-2 px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 transition-colors disabled:opacity-50 cursor-pointer shadow-md shadow-emerald-600/20"
+                    title="دفع وحفظ كافة الأوراش والمقاولين في ملف Google Sheets (نظام ← شيت)"
                   >
-                    <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-                    <span>مزامنة كافة المشتركين</span>
+                    <Upload className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+                    <span>{loading ? 'جارِ الدفع...' : 'دفع ومزامنة البيانات للشيت (نظام ← شيت)'}</span>
                   </button>
 
                   <button
@@ -1220,18 +1261,26 @@ export const MasterControlPanel: React.FC<MasterControlPanelProps> = ({ onInspec
                 </div>
 
                 <button
-                  onClick={() => {
-                    if (window.confirm('هل تريد تصفير كافة الأوراش والعمليات اليومية مع الحفاظ على حسابات المقاولين؟')) {
-                      resetToCleanData({ wipeTenants: false });
-                      setNotification({
-                        type: 'success',
-                        text: 'تم تصفير الأوراش والعمليات بنجاح مع الحفاظ على حسابات المقاولين المعتمدين!'
-                      });
+                  onClick={async () => {
+                    if (window.confirm('هل تريد تصفير كافة الأوراش والعمليات اليومية مع الحفاظ على حسابات المقاولين في النظام وفي Google Sheets؟')) {
+                      setLoading(true);
+                      try {
+                        await resetToCleanData({ wipeTenants: false, clearGoogleSheets: true });
+                        setNotification({
+                          type: 'success',
+                          text: 'تم تصفير الأوراش والعمليات في النظام وفي Google Sheets بنجاح مع الحفاظ على حسابات المقاولين المعتمدين!'
+                        });
+                      } catch (err: any) {
+                        setNotification({ type: 'error', text: err?.message || 'فشل تصفير الأوراش' });
+                      } finally {
+                        setLoading(false);
+                      }
                     }
                   }}
-                  className="w-full py-2.5 px-3 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 font-bold text-xs transition-colors cursor-pointer"
+                  disabled={loading}
+                  className="w-full py-2.5 px-3 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 font-bold text-xs transition-colors cursor-pointer disabled:opacity-50"
                 >
-                  تصفير الأوراش فقط (Chantiers = 0)
+                  تصفير الأوراش فقط (Chantiers = 0 في النظام والشيت)
                 </button>
               </div>
 
@@ -1243,7 +1292,7 @@ export const MasterControlPanel: React.FC<MasterControlPanelProps> = ({ onInspec
                     <span>2. تصفير شامل وحذف التجريبيين</span>
                   </div>
                   <p className="text-xs text-zinc-400 leading-relaxed">
-                    يمسح الحساب التجريبي الوهمي "سعيد المقاول" وكافة الأوراش والبيانات.
+                    يمسح الحسابات التجريبية والأوراش بالكامل محلياً وفي ملف Google Sheets المركزي.
                     <span className="text-zinc-300 font-semibold block mt-1">
                       يبقي فقط حسابك الرئيسي كـ Super Admin جاهزاً لإدخال المقاولين الفعليين.
                     </span>
@@ -1251,18 +1300,26 @@ export const MasterControlPanel: React.FC<MasterControlPanelProps> = ({ onInspec
                 </div>
 
                 <button
-                  onClick={() => {
-                    if (window.confirm('تنبيه: هذا الخيار سيحذف الحسابات التجريبية والأوراش بالكامل ويبدأ من الصفر (0 مقاولين تجريبيين و 0 أوراش). هل أنت متأكد؟')) {
-                      resetToCleanData({ wipeTenants: true });
-                      setNotification({
-                        type: 'success',
-                        text: 'تم التصفير الشامل بنجاح! المنظومة نظيفة وجاهزة للمقاولين الحقيقيين.'
-                      });
+                  onClick={async () => {
+                    if (window.confirm('تنبيه: هذا الخيار سيحذف الحسابات التجريبية والأوراش بالكامل في النظام ومسحها من Google Sheets (0 مقاولين تجريبيين و 0 أوراش). هل أنت متأكد؟')) {
+                      setLoading(true);
+                      try {
+                        await resetToCleanData({ wipeTenants: true, clearGoogleSheets: true });
+                        setNotification({
+                          type: 'success',
+                          text: 'تم التصفير الشامل في النظام ومسح ملف Google Sheets المركزي بنجاح! المنظومة نظيفة وجاهزة للمقاولين الحقيقيين.'
+                        });
+                      } catch (err: any) {
+                        setNotification({ type: 'error', text: err?.message || 'فشل التصفير الشامل' });
+                      } finally {
+                        setLoading(false);
+                      }
                     }
                   }}
-                  className="w-full py-2.5 px-3 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs transition-colors cursor-pointer shadow-md shadow-red-600/20"
+                  disabled={loading}
+                  className="w-full py-2.5 px-3 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs transition-colors cursor-pointer shadow-md shadow-red-600/20 disabled:opacity-50"
                 >
-                  تصفير شامل للإنتاج (0 Tenants)
+                  تصفير شامل للإنتاج (0 Tenants في النظام والشيت)
                 </button>
               </div>
 
@@ -1281,31 +1338,59 @@ export const MasterControlPanel: React.FC<MasterControlPanelProps> = ({ onInspec
                   </p>
                 </div>
 
-                <button
-                  onClick={async () => {
-                    if (window.confirm('هل تريد مسح وتفريغ كافة صفوف الأوراش والعمليات في Google Sheets المركزي لتصبح فارغة وجاهزة؟')) {
-                      setIsWipingCloud(true);
-                      try {
-                        const res = await wipeCloudSheetsData(false);
-                        setNotification({
-                          type: 'success',
-                          text: res.message
-                        });
-                      } catch (err: any) {
-                        setNotification({
-                          type: 'error',
-                          text: err.message || 'تعذر تصفير ملف Google Sheets'
-                        });
-                      } finally {
-                        setIsWipingCloud(false);
+                <div className="space-y-2">
+                  <button
+                    onClick={async () => {
+                      if (window.confirm('هل تريد مسح وتفريغ كافة صفوف الأوراش والعمليات في Google Sheets المركزي مع الحفاظ على المقاولين؟')) {
+                        setIsWipingCloud(true);
+                        try {
+                          const res = await wipeCloudSheetsData(false);
+                          setNotification({
+                            type: 'success',
+                            text: res.message
+                          });
+                        } catch (err: any) {
+                          setNotification({
+                            type: 'error',
+                            text: err.message || 'تعذر تصفير ملف Google Sheets'
+                          });
+                        } finally {
+                          setIsWipingCloud(false);
+                        }
                       }
-                    }
-                  }}
-                  disabled={isWipingCloud}
-                  className="w-full py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition-colors cursor-pointer shadow-md shadow-emerald-600/20 disabled:opacity-50"
-                >
-                  {isWipingCloud ? 'جارِ تفريغ الجداول...' : 'تفريغ Google Sheets الآن'}
-                </button>
+                    }}
+                    disabled={isWipingCloud || loading}
+                    className="w-full py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition-colors cursor-pointer shadow-md shadow-emerald-600/20 disabled:opacity-50"
+                  >
+                    {isWipingCloud ? 'جارِ تفريغ الجداول...' : 'تفريغ الأوراش فقط (بقاء المقاولين)'}
+                  </button>
+
+                  <button
+                    onClick={async () => {
+                      if (window.confirm('تنبيه: هل تريد تفريغ شامل لكافة الجداول وحسابات المقاولين التجريبية في Google Sheets (مسح Admin_Registry)؟')) {
+                        setIsWipingCloud(true);
+                        try {
+                          const res = await wipeCloudSheetsData(true);
+                          setNotification({
+                            type: 'success',
+                            text: res.message
+                          });
+                        } catch (err: any) {
+                          setNotification({
+                            type: 'error',
+                            text: err.message || 'تعذر تصفير ملف Google Sheets'
+                          });
+                        } finally {
+                          setIsWipingCloud(false);
+                        }
+                      }
+                    }}
+                    disabled={isWipingCloud || loading}
+                    className="w-full py-2 px-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-red-400 hover:text-red-300 font-bold text-xs transition-colors cursor-pointer border border-red-500/30 disabled:opacity-50"
+                  >
+                    {isWipingCloud ? 'جارِ المسح...' : 'تفريغ شامل للشيت + سجل المقاولين'}
+                  </button>
+                </div>
               </div>
 
             </div>

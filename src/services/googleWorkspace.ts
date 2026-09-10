@@ -963,6 +963,95 @@ export const saveAdminToRegistrySheet = async (
 };
 
 /**
+ * Push all system admins to Admin_Registry in Google Sheets, overwriting old data.
+ * Purges deleted admins so they are never accidentally restored.
+ */
+export const pushAdminsToMasterSheet = async (
+  spreadsheetId: string,
+  admins: AdminAccount[]
+): Promise<{ success: boolean; count: number; message: string }> => {
+  const token = getAccessToken();
+  if (!token) throw new Error('يرجى تسجيل الدخول بـ Gmail لإتمام المزامنة مع Google Sheets');
+
+  const adminRegistryData = [
+    [
+      'Admin ID (كود الأدمين)',
+      'Email (البريد)',
+      'Name (الاسم)',
+      'Role (الدور)',
+      'Type Abonnement (نوع الباقة)',
+      'Date Début (تاريخ بدأ الباقة)',
+      'Date Fin (تاريخ إنتهاء الباقة)',
+      'Status (الحالة التلقائية)',
+      'CreatedAt (تاريخ التسجيل)',
+      'LastLogin (آخر دخول)',
+      'Notes (ملاحظات)'
+    ],
+    ...admins.map(a => {
+      const autoStatus = computeAutoStatus(a.subscription, a.status);
+      return [
+        a.id,
+        a.email,
+        a.name,
+        a.role,
+        formatTierLabel(a.subscription?.tier),
+        formatSheetDate(a.subscription?.startDate),
+        formatSheetDate(a.subscription?.endDate),
+        formatAutoStatusDisplay(autoStatus, a.subscription?.tier),
+        a.createdAt,
+        a.lastLoginAt || 'لم يدخل بعد',
+        a.notes || ''
+      ];
+    })
+  ];
+
+  // 1. Clear old data from row 2 downwards so any deleted contractor is completely wiped
+  try {
+    await fetchWithRetry(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Admin_Registry!A2:K500:clear`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` }
+    });
+  } catch (e) {
+    console.warn('Could not clear Admin_Registry range:', e);
+  }
+
+  // 2. Write the fresh admin list from A1
+  let res = await fetchWithRetry(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Admin_Registry!A1?valueInputOption=USER_ENTERED`, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ values: adminRegistryData })
+  }).catch(() => null);
+
+  if (!res || !res.ok) {
+    // Fallback to Arabic sheet tab name if present
+    try {
+      await fetchWithRetry(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('سجل_الأدمين')}!A2:K500:clear`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      res = await fetchWithRetry(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent('سجل_الأدمين')}!A1?valueInputOption=USER_ENTERED`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ values: adminRegistryData })
+      });
+    } catch (e) {
+      console.warn('Fallback update failed:', e);
+    }
+  }
+
+  if (!res || !res.ok) {
+    throw new Error('فشل تحديث سجل المقاولين في Google Sheets');
+  }
+
+  const tenantCount = admins.filter(a => a.role !== 'super_admin').length;
+  return {
+    success: true,
+    count: tenantCount,
+    message: `تم دفع وتحديث قائمة المقاولين إلى Google Sheets بنجاح (${tenantCount} مقاولين حالياً). تم مسح المقاولين المحذوفين.`
+  };
+};
+
+/**
  * Safe ISO Date parser that never crashes on invalid date strings
  */
 export const safeIsoDate = (val?: string, fallback?: string): string => {
@@ -1095,9 +1184,10 @@ export const wipeAllSpreadsheetData = async (
   ];
 
   if (options?.wipeAdminRegistry) {
-    // Only clear non-super-admin rows in Admin_Registry (from row 3 onwards)
-    rangesToClear.push('Admin_Registry!A3:K500');
-    rangesToClear.push('سجل_الأدمينات!A3:K500');
+    // Clear all rows from row 2 onwards in Admin_Registry
+    rangesToClear.push('Admin_Registry!A2:K500');
+    rangesToClear.push('سجل_الأدمين!A2:K500');
+    rangesToClear.push('سجل_الأدمينات!A2:K500');
   }
 
   for (const range of rangesToClear) {
@@ -1114,7 +1204,7 @@ export const wipeAllSpreadsheetData = async (
   return {
     success: true,
     message: options?.wipeAdminRegistry
-      ? 'تم تفريغ وتصفير جداول Google Sheets وتصفير المقاولين التجريبيين بنجاح مع الحفاظ على رؤوس الأعمدة والمالك العام.'
+      ? 'تم تفريغ وتصفير جداول Google Sheets وتصفير المقاولين بنجاح مع الحفاظ على رؤوس الأعمدة.'
       : 'تم تفريغ وتصفير بيانات الأوراش والعمليات في Google Sheets بنجاح مع الحفاظ على حسابات المشتركين ورؤوس الأعمدة.'
   };
 };
@@ -1236,9 +1326,15 @@ export const syncAllDataToGoogleSheets = async (
     ])
   ];
 
-  // Batch update all sheets
+  // Batch update all sheets with automatic clearing of old rows
   const updateTab = async (sheetName: string, fallbackArabic: string, values: any[][]) => {
-    // Attempt French tab name first, fallback to Arabic if exists
+    // 1. Clear previous rows from row 2 onwards so deleted records are completely wiped!
+    await fetchWithRetry(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(sheetName)}!A2:Z2000:clear`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` }
+    }).catch(() => null);
+
+    // 2. Put fresh values from A1
     let res = await fetchWithRetry(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(sheetName)}!A1?valueInputOption=USER_ENTERED`, {
       method: 'PUT',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -1246,6 +1342,11 @@ export const syncAllDataToGoogleSheets = async (
     }).catch(() => null);
 
     if (!res || !res.ok) {
+      await fetchWithRetry(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(fallbackArabic)}!A2:Z2000:clear`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` }
+      }).catch(() => null);
+
       res = await fetchWithRetry(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(fallbackArabic)}!A1?valueInputOption=USER_ENTERED`, {
         method: 'PUT',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -1262,40 +1363,9 @@ export const syncAllDataToGoogleSheets = async (
   await updateTab('Depenses_Chantier', 'المصاريف_اليومية', expensesData);
   await updateTab('Decomptes_Clients', 'دفعات_الزبناء_Décomptes', clientPaymentsData);
 
-  // Synchronize Admin_Registry with subscription plans and automatic statuses
+  // Synchronize Admin_Registry with subscription plans and automatic statuses (also clears deleted admins)
   if (state.adminAccounts && state.adminAccounts.length > 0) {
-    const adminRegistryData = [
-      [
-        'Admin ID (كود الأدمين)',
-        'Email (البريد)',
-        'Name (الاسم)',
-        'Role (الدور)',
-        'Type Abonnement (نوع الباقة)',
-        'Date Début (تاريخ بدأ الباقة)',
-        'Date Fin (تاريخ إنتهاء الباقة)',
-        'Status (الحالة التلقائية)',
-        'CreatedAt (تاريخ التسجيل)',
-        'LastLogin (آخر دخول)',
-        'Notes (ملاحظات)'
-      ],
-      ...state.adminAccounts.map(a => {
-        const autoStatus = computeAutoStatus(a.subscription, a.status);
-        return [
-          a.id,
-          a.email,
-          a.name,
-          a.role,
-          formatTierLabel(a.subscription?.tier),
-          formatSheetDate(a.subscription?.startDate),
-          formatSheetDate(a.subscription?.endDate),
-          formatAutoStatusDisplay(autoStatus, a.subscription?.tier),
-          a.createdAt,
-          a.lastLoginAt || 'لم يدخل بعد',
-          a.notes || ''
-        ];
-      })
-    ];
-    await updateTab('Admin_Registry', 'سجل_الأدمين', adminRegistryData);
+    await pushAdminsToMasterSheet(spreadsheetId, state.adminAccounts);
   }
 
   const totalRows = projects.length + cpsArticles.length + workers.length + purchases.length + expenses.length + clientPayments.length;

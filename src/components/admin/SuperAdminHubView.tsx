@@ -25,7 +25,9 @@ import {
   Share2,
   Crown,
   Zap,
-  Calendar
+  Calendar,
+  Upload,
+  Download
 } from 'lucide-react';
 import { generateUniqueAdminId, SUPER_ADMIN_EMAIL } from '../../services/googleWorkspace';
 import { SupervisorPermissions, SubscriptionTier } from '../../types';
@@ -55,6 +57,7 @@ export const SuperAdminHubView: React.FC = () => {
     inspectAndConnectMasterSheet,
     syncToGoogleSheets,
     syncAdminsFromMasterSheet,
+    pushAdminsToMasterSheet,
     isGoogleAuthenticated,
     googleUser,
     resetToCleanData,
@@ -74,6 +77,7 @@ export const SuperAdminHubView: React.FC = () => {
   const [isRegistering, setIsRegistering] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isSyncingAdmins, setIsSyncingAdmins] = useState(false);
+  const [isPushingAdmins, setIsPushingAdmins] = useState(false);
   const [isCreatingSheet, setIsCreatingSheet] = useState(false);
   const [isInspectingSheet, setIsInspectingSheet] = useState(false);
   const [sheetInspectionResult, setSheetInspectionResult] = useState<any>(null);
@@ -81,8 +85,28 @@ export const SuperAdminHubView: React.FC = () => {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [copiedInvite, setCopiedInvite] = useState<string | null>(null);
 
+  const handlePushAdmins = async () => {
+    setIsPushingAdmins(true);
+    setNotification(null);
+    try {
+      const res = await pushAdminsToMasterSheet();
+      setNotification({
+        type: 'success',
+        text: res.message
+      });
+    } catch (err: any) {
+      setNotification({
+        type: 'error',
+        text: err?.message || 'فشل دفع قائمة المقاولين إلى Google Sheets'
+      });
+    } finally {
+      setIsPushingAdmins(false);
+    }
+  };
+
   const handleSyncAdmins = async () => {
     setIsSyncingAdmins(true);
+    setNotification(null);
     try {
       const res = await syncAdminsFromMasterSheet();
       setNotification({
@@ -326,17 +350,21 @@ export const SuperAdminHubView: React.FC = () => {
 
             {/* Clear all mock data button */}
             <button
-              onClick={() => {
-                if (window.confirm('هل أنت متأكد من تصفير ومسح بيانات الأوراش والعمليات اليومية (مع الحفاظ على حسابات المقاولين المعتمدين)؟')) {
-                  resetToCleanData({ wipeTenants: false });
-                  setNotification({
-                    type: 'success',
-                    text: 'تم تصفير الأوراش والعمليات بنجاح مع الحفاظ على المقاولين المعتمدين (Chantiers = 0).'
-                  });
+              onClick={async () => {
+                if (window.confirm('هل أنت متأكد من تصفير ومسح بيانات الأوراش والعمليات اليومية في النظام ومسحها من Google Sheets (مع الحفاظ على حسابات المقاولين المعتمدين)؟')) {
+                  try {
+                    await resetToCleanData({ wipeTenants: false, clearGoogleSheets: true });
+                    setNotification({
+                      type: 'success',
+                      text: 'تم تصفير الأوراش والعمليات بنجاح في المنظومة وفي Google Sheets مع الحفاظ على المقاولين المعتمدين (Chantiers = 0).'
+                    });
+                  } catch (err: any) {
+                    setNotification({ type: 'error', text: err?.message || 'فشل تصفير الأوراش' });
+                  }
                 }
               }}
               className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 hover:text-red-300 text-xs font-bold transition-colors cursor-pointer"
-              title="تصفير الأوراش والعمليات مع الحفاظ على المقاولين"
+              title="تصفير الأوراش والعمليات في النظام والشيت مع الحفاظ على المقاولين"
             >
               <Trash2 className="w-3.5 h-3.5" />
               <span>تصفير الأوراش (0 Données)</span>
@@ -640,9 +668,10 @@ export const SuperAdminHubView: React.FC = () => {
                   onClick={handleSyncToSheets}
                   disabled={isSyncing || isInspectingSheet}
                   className="w-full py-2 px-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                  title="دفع وحفظ كافة الأوراش والمقاولين في ملف Google Sheets (نظام ← شيت)"
                 >
-                  {isSyncing ? <Loader2 className="w-3.5 h-3.5 animate-spin text-zinc-950" /> : <RefreshCw className="w-3.5 h-3.5" />}
-                  <span>مزامنة كافة الجداول الآن</span>
+                  {isSyncing ? <Loader2 className="w-3.5 h-3.5 animate-spin text-zinc-950" /> : <Upload className="w-3.5 h-3.5" />}
+                  <span>دفع ومزامنة كافة الجداول للشيت (نظام ← شيت)</span>
                 </button>
               </div>
             )}
@@ -666,15 +695,25 @@ export const SuperAdminHubView: React.FC = () => {
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={handlePushAdmins}
+              disabled={isPushingAdmins}
+              className="py-1.5 px-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold border border-amber-400 text-xs flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+              title="دفع قائمة المقاولين الحالية في النظام ومسح أي مقاول محذوف في ملف Google Sheets"
+            >
+              <Upload className={`w-3.5 h-3.5 ${isPushingAdmins ? 'animate-spin' : ''}`} />
+              <span>{isPushingAdmins ? 'جارِ الدفع للشيت...' : 'دفع المقاولين للشيت (نظام ← شيت)'}</span>
+            </button>
+
             <button
               onClick={handleSyncAdmins}
               disabled={isSyncingAdmins}
               className="py-1.5 px-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-100 font-bold border border-zinc-700 text-xs flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
-              title="استيراد وتحديث المقاولين المسجلين في الشيت المركزي فوراً"
+              title="استيراد وتحديث المقاولين المسجلين في الشيت المركزي فوراً إلى النظام"
             >
-              <RefreshCw className={`w-3.5 h-3.5 text-amber-400 ${isSyncingAdmins ? 'animate-spin' : ''}`} />
-              <span>{isSyncingAdmins ? 'جارِ المزامنة...' : 'مزامنة المقاولين من Google Sheets'}</span>
+              <Download className={`w-3.5 h-3.5 text-amber-400 ${isSyncingAdmins ? 'animate-spin' : ''}`} />
+              <span>{isSyncingAdmins ? 'جارِ السحب...' : 'سحب المقاولين من الشيت (شيت ← نظام)'}</span>
             </button>
           </div>
         </div>
@@ -846,13 +885,18 @@ export const SuperAdminHubView: React.FC = () => {
                         {/* Delete */}
                         {!isRoot && (
                           <button
-                            onClick={() => {
-                              if (window.confirm(`هل أنت متأكد من حذف الأدمين (${admin.name})؟`)) {
-                                deleteAdmin(admin.id);
+                            onClick={async () => {
+                              if (window.confirm(`هل أنت متأكد من حذف الأدمين (${admin.name})؟ سيتم حذفه من المنظومة ومسحه كلياً من ملف Google Sheets المركزي.`)) {
+                                try {
+                                  const res = await deleteAdmin(admin.id);
+                                  setNotification({ type: 'success', text: res.message });
+                                } catch (err: any) {
+                                  setNotification({ type: 'error', text: err?.message || 'فشل حذف المقاول' });
+                                }
                               }
                             }}
-                            className="p-1 text-zinc-500 hover:text-red-400 hover:bg-zinc-800 rounded"
-                            title="حذف الأدمين"
+                            className="p-1 text-zinc-500 hover:text-red-400 hover:bg-zinc-800 rounded transition-colors"
+                            title="حذف الأدمين ومسحه من Google Sheets"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
