@@ -93,6 +93,7 @@ export interface AdminAccount {
   name: string;
   companyName?: string;
   phone?: string;
+  pin?: string; // Secret PIN code e.g. "1234"
   role: 'super_admin' | 'admin';
   status: 'active' | 'pending' | 'suspended' | 'expired';
   createdAt: string;

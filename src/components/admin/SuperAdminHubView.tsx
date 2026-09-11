@@ -74,6 +74,7 @@ export const SuperAdminHubView: React.FC = () => {
   const [newName, setNewName] = useState('');
   const [newCompanyName, setNewCompanyName] = useState('');
   const [newPhone, setNewPhone] = useState('');
+  const [newPin, setNewPin] = useState('1234');
   const [newNotes, setNewNotes] = useState('');
   const [newTier, setNewTier] = useState<SubscriptionTier>('trial_3days');
   const [generatedId, setGeneratedId] = useState(() => generateUniqueAdminId(adminAccounts.map(a => a.id)));
@@ -193,6 +194,7 @@ export const SuperAdminHubView: React.FC = () => {
         name: newName.trim(),
         companyName: newCompanyName.trim() || undefined,
         phone: newPhone.trim() || undefined,
+        pin: newPin.trim() || '1234',
         role: 'admin',
         notes: newNotes.trim() || undefined,
         subscriptionTier: newTier
@@ -201,7 +203,7 @@ export const SuperAdminHubView: React.FC = () => {
       setRegisteredAdminInfo(created);
       setNotification({
         type: 'success',
-        text: `تم تسجيل الأدمين بنجاح بالكود: ${created.id} وإضافته لورقة Admin_Registry في Google Sheets!`
+        text: `تم تسجيل الأدمين بنجاح بالكود: ${created.id} (PIN: ${created.pin || '1234'}) وإضافته لورقة Admin_Registry في Google Sheets!`
       });
 
       // Reset form & generate new id for next
@@ -209,6 +211,7 @@ export const SuperAdminHubView: React.FC = () => {
       setNewName('');
       setNewCompanyName('');
       setNewPhone('');
+      setNewPin('1234');
       setNewNotes('');
       setNewTier('trial_3days');
       setGeneratedId(generateUniqueAdminId([...adminAccounts.map(a => a.id), created.id]));
@@ -294,12 +297,15 @@ export const SuperAdminHubView: React.FC = () => {
   const generateInviteMessage = (admin: any) => {
     return `السلام عليكم سي ${admin.name}،
 مرحباً بك في نظام XiilL BTP لإدارة أوراش البناء والمقاولات.
-تم تفعيل حسابك كأدمين للنظام:
-🔑 كود الدخول الخاص بك: *${admin.id}*
+تم تفعيل حسابك كأدمين / مدير عام للنظام:
+🔑 كود الأدمين الخاص بك: *${admin.id}*
+🔢 رمز PIN السري للدخول: *${admin.pin || '1234'}*
 📧 البريد المعتمد: ${admin.email}
 
-يرجى فتح التطبيق، واختيار "مدير عام / أدمين"، ثم إدخال كود الأدمين أعلاه ومتابعة الدخول.
-سيفتح لك فضاء عملك المستقل الخاص بأوراشك، مشرفيك، عمالك ومصاريفك. بالتوفيق!`;
+طريقة الدخول:
+1. افتح التطبيق واختر "مدير عام / مقاول"
+2. أدخل كود الأدمين (${admin.id}) ورمز PIN (${admin.pin || '1234'})
+(أنت معفى تماماً من تسجيل الدخول بـ Gmail، ورقتك مجهزة تلقائياً في الشيت المركزي). بالتوفيق!`;
   };
 
   const isSuperAdmin = isPlatformSuperAdmin;
@@ -443,7 +449,7 @@ export const SuperAdminHubView: React.FC = () => {
                   <div>
                     <h4 className="text-xs font-bold text-emerald-300">تم تسجيل المقاول بنجاح! كود الأدمين جاهز للإرسال</h4>
                     <p className="text-[11px] text-zinc-300">
-                      كود الأدمين: <span className="font-mono font-bold text-amber-400 text-xs px-1.5 py-0.5 rounded bg-zinc-900 border border-amber-500/30">{registeredAdminInfo.id}</span> | {registeredAdminInfo.name} ({registeredAdminInfo.phone || 'بدون هاتف'})
+                      كود الأدمين: <span className="font-mono font-bold text-amber-400 text-xs px-1.5 py-0.5 rounded bg-zinc-900 border border-amber-500/30">{registeredAdminInfo.id}</span> | رمز PIN: <span className="font-mono font-bold text-amber-400 text-xs px-1.5 py-0.5 rounded bg-zinc-900 border border-amber-500/30">{registeredAdminInfo.pin || '1234'}</span> | {registeredAdminInfo.name} ({registeredAdminInfo.phone || 'بدون هاتف'})
                     </p>
                   </div>
                 </div>
@@ -565,26 +571,48 @@ export const SuperAdminHubView: React.FC = () => {
               </div>
             </div>
 
-            {/* Generated Unique ID Preview */}
-            <div className="p-3.5 rounded-xl bg-zinc-950 border border-amber-500/30 flex flex-col sm:flex-row items-center justify-between gap-3">
-              <div className="flex items-center gap-2.5">
-                <KeyRound className="w-5 h-5 text-amber-400 shrink-0" />
-                <div>
-                  <span className="text-[11px] text-zinc-400 block">كود الأدمين المولد تلقائياً (غير مكرر):</span>
-                  <span className="text-sm font-mono font-extrabold text-amber-400 tracking-wider">{generatedId}</span>
+            {/* Generated Unique ID Preview & Secret PIN */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="p-3.5 rounded-xl bg-zinc-950 border border-amber-500/30 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <KeyRound className="w-5 h-5 text-amber-400 shrink-0" />
+                  <div>
+                    <span className="text-[11px] text-zinc-400 block">كود الأدمين المولد تلقائياً (غير مكرر):</span>
+                    <span className="text-sm font-mono font-extrabold text-amber-400 tracking-wider">{generatedId}</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleRegenerateId}
+                    className="px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-xs font-semibold flex items-center gap-1 transition-colors"
+                    title="توليد كود جديد"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>توليد كود آخر</span>
+                  </button>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleRegenerateId}
-                  className="px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-xs font-semibold flex items-center gap-1 transition-colors"
-                  title="توليد كود جديد"
-                >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  <span>توليد كود آخر</span>
-                </button>
+              <div className="p-3.5 rounded-xl bg-zinc-950 border border-zinc-700 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <Lock className="w-5 h-5 text-amber-400 shrink-0" />
+                  <div>
+                    <span className="text-[11px] text-zinc-400 block">رمز PIN السري للمقاول:</span>
+                    <input
+                      type="text"
+                      value={newPin}
+                      onChange={(e) => setNewPin(e.target.value)}
+                      maxLength={8}
+                      placeholder="1234"
+                      className="mt-1 w-28 px-2 py-1 rounded bg-zinc-900 border border-zinc-700 focus:border-amber-500 text-amber-300 font-mono font-bold text-center text-xs focus:outline-none"
+                    />
+                  </div>
+                </div>
+                <span className="text-[10px] text-zinc-500 max-w-[120px] leading-tight">
+                  الافتراضي 1234 (مطلوب مع الكود للدخول)
+                </span>
               </div>
             </div>
 
@@ -864,9 +892,9 @@ export const SuperAdminHubView: React.FC = () => {
                 return (
                   <tr key={admin.id} className={`hover:bg-zinc-800/40 transition-colors ${isCurrent ? 'bg-amber-500/5' : ''}`}>
                     
-                    {/* Admin ID */}
-                    <td className="py-3 px-3 font-mono font-bold text-amber-400">
-                      <div className="flex items-center gap-1.5">
+                    {/* Admin ID & PIN */}
+                    <td className="py-3 px-3">
+                      <div className="flex items-center gap-1.5 font-mono font-bold text-amber-400">
                         <span>{admin.id}</span>
                         <button
                           onClick={() => copyToClipboard(admin.id, admin.id, 'id')}
@@ -875,6 +903,10 @@ export const SuperAdminHubView: React.FC = () => {
                         >
                           {copiedId === admin.id ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                         </button>
+                      </div>
+                      <div className="text-[10px] text-zinc-400 font-mono mt-0.5 flex items-center gap-1">
+                        <span>PIN:</span>
+                        <span className="text-zinc-200 font-bold px-1 bg-zinc-800 rounded">{admin.pin || '1234'}</span>
                       </div>
                     </td>
 

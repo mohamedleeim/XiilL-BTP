@@ -1290,6 +1290,7 @@ export const buildAdminWhatsAppMessage = (admin: AdminAccount, portalUrl?: strin
 
 👤 الصلاحية والرول: مدير عام / مقاول (Directeur Général)
 🔑 كود الأدمين الخاص بكم (Admin ID): ${admin.id}
+🔢 رمز PIN السري للدخول: ${admin.pin || '1234'}
 📋 نوع الاشتراك: ${tierName}
 ⏳ تاريخ الانتهاء: ${endDateFormatted}
 
@@ -1299,7 +1300,8 @@ ${url}
 طريقة الدخول:
 1. افتح الرابط أعلاه
 2. اختر "فضاء المدير العام / المقاول"
-3. أدخل كود الأدمين الخاص بك: ${admin.id}
+3. أدخل كود الأدمين: ${admin.id}
+4. أدخل رمز PIN السري: ${admin.pin || '1234'} (لا تحتاج لأي حساب Gmail)
 
 نتمنى لكم تجربة موفقة في ضبط ومراقبة أوراشكم ومصاريفكم بدقة.`;
 };

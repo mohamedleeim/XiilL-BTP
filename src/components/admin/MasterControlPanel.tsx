@@ -94,6 +94,7 @@ export const MasterControlPanel: React.FC<MasterControlPanelProps> = ({ onInspec
   const [newName, setNewName] = useState('');
   const [newCompanyName, setNewCompanyName] = useState('');
   const [newPhone, setNewPhone] = useState('');
+  const [newPin, setNewPin] = useState('1234');
   const [newNotes, setNewNotes] = useState('');
   const [newRole, setNewRole] = useState<'admin'>('admin');
   const [newTier, setNewTier] = useState<SubscriptionTier>('trial_3days');
@@ -214,6 +215,7 @@ export const MasterControlPanel: React.FC<MasterControlPanelProps> = ({ onInspec
         name: newName.trim(),
         companyName: newCompanyName.trim() || undefined,
         phone: newPhone.trim() || undefined,
+        pin: newPin.trim() || '1234',
         role: newRole,
         notes: newNotes.trim() || undefined,
         subscriptionTier: newTier
@@ -222,7 +224,7 @@ export const MasterControlPanel: React.FC<MasterControlPanelProps> = ({ onInspec
       setRegisteredSuccessAdmin(created);
       setNotification({
         type: 'success',
-        text: `تم إصدار الترخيص وتسجيل المقاول بنجاح بالكود: ${created.id}`
+        text: `تم إصدار الترخيص وتسجيل المقاول بنجاح بالكود: ${created.id} (PIN: ${created.pin || '1234'})`
       });
 
       // Reset form fields
@@ -230,6 +232,7 @@ export const MasterControlPanel: React.FC<MasterControlPanelProps> = ({ onInspec
       setNewName('');
       setNewCompanyName('');
       setNewPhone('');
+      setNewPin('1234');
       setNewNotes('');
       setNewTier('trial_3days');
       setGeneratedId(generateUniqueAdminId([...adminAccounts.map(a => a.id), created.id]));
@@ -807,18 +810,24 @@ export const MasterControlPanel: React.FC<MasterControlPanelProps> = ({ onInspec
                       </div>
 
                       {/* Admin ID Badge & Copy */}
-                      <button
-                        onClick={() => copyToClipboard(tenant.id, tenant.id, 'id')}
-                        className="py-1 px-2.5 rounded-lg bg-zinc-950 border border-zinc-800 text-xs font-mono font-bold text-amber-400 hover:border-amber-500 flex items-center gap-1.5 transition-colors"
-                        title="نسخ كود الأدمين"
-                      >
-                        <span>{tenant.id}</span>
-                        {isCopiedThisId ? (
-                          <Check className="w-3.5 h-3.5 text-emerald-400" />
-                        ) : (
-                          <Copy className="w-3.5 h-3.5 opacity-60" />
-                        )}
-                      </button>
+                      <div className="flex flex-col items-end gap-1">
+                        <button
+                          onClick={() => copyToClipboard(tenant.id, tenant.id, 'id')}
+                          className="py-1 px-2.5 rounded-lg bg-zinc-950 border border-zinc-800 text-xs font-mono font-bold text-amber-400 hover:border-amber-500 flex items-center gap-1.5 transition-colors cursor-pointer"
+                          title="نسخ كود الأدمين"
+                        >
+                          <span>{tenant.id}</span>
+                          {isCopiedThisId ? (
+                            <Check className="w-3.5 h-3.5 text-emerald-400" />
+                          ) : (
+                            <Copy className="w-3.5 h-3.5 opacity-60" />
+                          )}
+                        </button>
+                        <div className="text-[10px] text-zinc-400 font-mono flex items-center gap-1">
+                          <span>PIN:</span>
+                          <span className="text-zinc-200 font-bold px-1 bg-zinc-950 border border-zinc-800 rounded">{tenant.pin || '1234'}</span>
+                        </div>
+                      </div>
                     </div>
 
                     {/* Contact & Meta info */}
@@ -1472,6 +1481,10 @@ export const MasterControlPanel: React.FC<MasterControlPanelProps> = ({ onInspec
                       <span className="text-zinc-500 block text-[11px]">الهاتف (واتساب):</span>
                       <span className="text-zinc-200 font-mono">{registeredSuccessAdmin.phone || 'غير مسجل'}</span>
                     </div>
+                    <div>
+                      <span className="text-zinc-500 block text-[11px]">رمز PIN السري:</span>
+                      <span className="text-amber-300 font-mono font-bold">{registeredSuccessAdmin.pin || '1234'}</span>
+                    </div>
                     <div className="col-span-2 p-2 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-between">
                       <div>
                         <span className="text-[11px] text-zinc-400 block">نوع الاشتراك والمدة التلقائية:</span>
@@ -1566,29 +1579,50 @@ export const MasterControlPanel: React.FC<MasterControlPanelProps> = ({ onInspec
                 </div>
 
                 <form onSubmit={handleRegisterSubmit} className="space-y-3.5">
-                  {/* Generated Admin ID */}
-                  <div>
-                    <label className="block text-xs font-semibold text-zinc-300 mb-1">
-                      كود الأدمين المولد تلقائياً (Admin ID)
-                    </label>
-                    <div className="flex items-center gap-2">
-                      <div className="relative flex-1">
-                        <KeyRound className="w-4 h-4 text-zinc-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  {/* Generated Admin ID & Secret PIN */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-zinc-300 mb-1">
+                        كود الأدمين المولد تلقائياً (Admin ID)
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <div className="relative flex-1">
+                          <KeyRound className="w-4 h-4 text-zinc-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                          <input
+                            type="text"
+                            readOnly
+                            value={generatedId}
+                            className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 pr-10 text-amber-400 font-mono font-bold text-sm focus:outline-none"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleRegenerateId}
+                          className="p-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 transition-colors cursor-pointer"
+                          title="توليد كود آخر"
+                        >
+                          <RefreshCw className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-zinc-300 mb-1 flex items-center justify-between">
+                        <span>رمز PIN السري للمقاول</span>
+                        <span className="text-[10px] text-amber-400">الافتراضي: 1234</span>
+                      </label>
+                      <div className="relative">
+                        <Lock className="w-4 h-4 text-zinc-500 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                         <input
                           type="text"
-                          readOnly
-                          value={generatedId}
-                          className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 pr-10 text-amber-400 font-mono font-bold text-sm focus:outline-none"
+                          required
+                          value={newPin}
+                          onChange={(e) => setNewPin(e.target.value)}
+                          maxLength={8}
+                          placeholder="1234"
+                          className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 pr-10 text-white font-mono font-bold text-sm focus:outline-none focus:border-amber-500"
                         />
                       </div>
-                      <button
-                        type="button"
-                        onClick={handleRegenerateId}
-                        className="p-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 transition-colors"
-                        title="توليد كود آخر"
-                      >
-                        <RefreshCw className="w-4 h-4" />
-                      </button>
                     </div>
                   </div>
 

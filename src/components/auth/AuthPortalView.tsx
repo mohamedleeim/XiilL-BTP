@@ -39,7 +39,7 @@ export const AuthPortalView: React.FC = () => {
   const [masterSecurityKey, setMasterSecurityKey] = useState<string>('');
   const [showKeyText, setShowKeyText] = useState<boolean>(false);
 
-  // Admin form state (strictly ID Code with device persistence)
+  // Admin form state (strictly ID Code + PIN with device persistence)
   const [adminCode, setAdminCode] = useState<string>(() => {
     try {
       return localStorage.getItem('xiill_btp_remember_admin_code') || '';
@@ -47,6 +47,14 @@ export const AuthPortalView: React.FC = () => {
       return '';
     }
   });
+  const [adminPin, setAdminPin] = useState<string>(() => {
+    try {
+      return localStorage.getItem('xiill_btp_remember_admin_pin') || '';
+    } catch (e) {
+      return '';
+    }
+  });
+  const [showAdminPin, setShowAdminPin] = useState<boolean>(false);
   const [adminRememberMe, setAdminRememberMe] = useState<boolean>(true);
 
   // Supervisor form state (with persisted memory for auto-fill & one-click access)
@@ -113,12 +121,17 @@ export const AuthPortalView: React.FC = () => {
     ? state.users.filter(u => u.role === 'supervisor' && (u.adminId?.toUpperCase() === cleanSupervisorAdminId || !u.adminId))
     : [];
 
-  // Submit Handler: General Manager / Admin (Strictly ID Code)
+  // Submit Handler: General Manager / Admin (Strictly ID Code & Secret PIN)
   const handleAdminSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanCode = adminCode.trim().toUpperCase();
     if (!cleanCode) {
       setErrorMessage('يرجى إدخال كود الأدمين الخاص بك (Admin ID Code)');
+      return;
+    }
+    const cleanPin = adminPin.trim();
+    if (!cleanPin) {
+      setErrorMessage('يرجى إدخال رمز PIN السري للمقاول (الافتراضي: 1234)');
       return;
     }
 
@@ -127,13 +140,15 @@ export const AuthPortalView: React.FC = () => {
     try {
       if (adminRememberMe) {
         localStorage.setItem('xiill_btp_remember_admin_code', cleanCode);
+        localStorage.setItem('xiill_btp_remember_admin_pin', cleanPin);
       } else {
         localStorage.removeItem('xiill_btp_remember_admin_code');
+        localStorage.removeItem('xiill_btp_remember_admin_pin');
       }
-      const res = await loginAsAdmin(cleanCode);
+      const res = await loginAsAdmin(cleanCode, cleanPin);
       setSuccessMessage(res.message);
     } catch (err: any) {
-      setErrorMessage(err?.message || 'تعذر تسجيل الدخول بكود الأدمين المدخل');
+      setErrorMessage(err?.message || 'تعذر تسجيل الدخول بكود الأدمين أو رمز PIN المدخل');
     } finally {
       setLoading(false);
     }
@@ -532,6 +547,42 @@ export const AuthPortalView: React.FC = () => {
                     </div>
                     <span className="text-[11px] text-zinc-500 mt-1 block">
                       يبدأ كود الأدمين دائماً بـ ADM- (تم تزويدك به عند الاشتراك)
+                    </span>
+                  </div>
+
+                  {/* Contractor Secret PIN Field */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-xs font-semibold text-zinc-300 flex items-center gap-1.5">
+                        <Lock className="w-3.5 h-3.5 text-amber-400" />
+                        <span>رمز PIN السري للمقاول (Code PIN)</span>
+                        <span className="text-amber-400">*</span>
+                      </label>
+                      <span className="text-[10px] text-zinc-500">
+                        الافتراضي: <strong className="text-amber-400 font-mono">1234</strong>
+                      </span>
+                    </div>
+                    <div className="relative">
+                      <input
+                        type={showAdminPin ? 'text' : 'password'}
+                        required
+                        value={adminPin}
+                        onChange={(e) => setAdminPin(e.target.value)}
+                        placeholder="••••"
+                        maxLength={8}
+                        className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 pl-10 text-white font-mono text-center tracking-widest placeholder:font-sans placeholder:tracking-normal placeholder:text-zinc-600 focus:outline-none focus:border-amber-500 transition-colors text-sm"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowAdminPin(!showAdminPin)}
+                        className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300 transition-colors cursor-pointer"
+                        title={showAdminPin ? 'إخفاء الرمز' : 'إظهار الرمز'}
+                      >
+                        {showAdminPin ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                    <span className="text-[11px] text-zinc-500 mt-1 block">
+                      رمز أمان خاص بك لمنع الولوج غير المصرح به (الرمز المبدئي: 1234)
                     </span>
                   </div>
 

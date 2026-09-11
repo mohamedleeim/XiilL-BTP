@@ -114,7 +114,7 @@ interface AppContextType {
   activeSession: ActiveSession | null;
   isAuthenticated: boolean;
   loginAsSuperAdmin: (masterKey?: string) => Promise<{ success: boolean; message: string }>;
-  loginAsAdmin: (adminCode: string, email?: string, name?: string) => Promise<{ success: boolean; message: string }>;
+  loginAsAdmin: (adminCode: string, pin?: string, email?: string, name?: string) => Promise<{ success: boolean; message: string }>;
   loginAsSupervisor: (
     paramsOrId: {
       adminId: string;
@@ -245,7 +245,7 @@ interface AppContextType {
   switchActiveAdmin: (adminId: string | null) => void;
   loginWithGoogleAdmin: (adminIdCode?: string) => Promise<{ success: boolean; message: string; role: 'super_admin' | 'admin' }>;
   logoutGoogleAdmin: () => Promise<void>;
-  registerNewAdmin: (data: { email: string; name: string; companyName?: string; phone?: string; role?: 'admin' | 'super_admin'; notes?: string; subscriptionTier?: SubscriptionTier }) => Promise<AdminAccount>;
+  registerNewAdmin: (data: { email: string; name: string; companyName?: string; phone?: string; pin?: string; role?: 'admin' | 'super_admin'; notes?: string; subscriptionTier?: SubscriptionTier }) => Promise<AdminAccount>;
   updateAdminStatus: (adminId: string, status: 'active' | 'suspended') => void;
   deleteAdmin: (adminId: string) => Promise<{ success: boolean; message: string }>;
   
@@ -578,7 +578,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return { success: true, message: 'تم التحقق بنجاح! مرحباً بك يا مالك المنظومة في لوحة التحكم المركزية.' };
   };
 
-  const loginAsAdmin = async (adminCode: string, email?: string, name?: string) => {
+  const loginAsAdmin = async (adminCode: string, pin?: string, email?: string, name?: string) => {
     const cleanCode = adminCode.trim().toUpperCase();
     let found = state.adminAccounts.find(a => a.id.toUpperCase() === cleanCode);
 
@@ -590,6 +590,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           name: name || `المقاول (${cleanCode})`,
           companyName: `مقاولة البناء (${cleanCode})`,
           role: 'admin',
+          pin: pin?.trim() || '1234',
           status: 'active',
           createdAt: new Date().toISOString(),
           notes: 'حساب مسجل عبر كود الأدمين',
@@ -602,6 +603,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } else {
         throw new Error(`كود الأدمين (${cleanCode}) غير مسجل في المنظومة. يرجى التأكد من الكود الممنوح لك من المالك العام.`);
       }
+    }
+
+    // Verify Contractor PIN
+    const requiredPin = found.pin || '1234';
+    if (!pin || !pin.trim()) {
+      throw new Error('يرجى إدخال رمز PIN السري للمقاول (الافتراضي: 1234)');
+    }
+    if (pin.trim() !== requiredPin) {
+      throw new Error('رمز الدخول السري (PIN) للمقاول غير صحيح. يرجى التأكد من الرمز وإعادة المحاولة.');
+    }
+
+    // Ensure pin is persisted on account if missing
+    if (!found.pin) {
+      found.pin = requiredPin;
+      setState(prev => ({
+        ...prev,
+        adminAccounts: prev.adminAccounts.map(a => a.id === found!.id ? { ...a, pin: requiredPin } : a)
+      }));
     }
 
     if (found.status === 'suspended') {
@@ -2374,6 +2393,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     name: string;
     companyName?: string;
     phone?: string;
+    pin?: string;
     role?: 'admin' | 'super_admin';
     notes?: string;
     subscriptionTier?: SubscriptionTier;
@@ -2391,6 +2411,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       name: data.name.trim(),
       companyName: data.companyName?.trim(),
       phone: data.phone?.trim(),
+      pin: data.pin?.trim() || '1234',
       role: data.role || 'admin',
       status: 'active',
       createdAt: new Date().toISOString(),

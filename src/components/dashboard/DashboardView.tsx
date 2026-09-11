@@ -184,36 +184,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
         <SupervisorSheetSyncCard />
       )}
 
-      {/* General Manager Missing Sheet Setup Reminder Banner */}
-      {activeSession?.type === 'admin' && !activeChantierSheet.url && (
-        <div 
-          id="banner-manager-setup-sheets"
-          className="p-4 bg-gradient-to-r from-amber-950/60 to-slate-900 border border-amber-500/40 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-amber-200"
-        >
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-amber-500/20 text-amber-400 rounded-xl">
-              <FileSpreadsheet className="w-5 h-5" />
-            </div>
-            <div>
-              <h4 className="text-sm font-bold text-white">
-                لم يتم تهيئة جدول بيانات Google Sheets المركزي لحسابك بعد
-              </h4>
-              <p className="text-xs text-amber-300/80">
-                قم بالربط التلقائي بحساب Gmail أو الصق ملفك السابق لتدقيق الأوراق الثمانية وضمان حفظ معطيات الأوراش.
-              </p>
-            </div>
-          </div>
-          <button
-            id="btn-open-sheets-onboarding-banner"
-            onClick={openSheetOnboarding}
-            className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl shadow transition-all flex items-center gap-1.5 cursor-pointer"
-          >
-            <Sparkles className="w-4 h-4 text-slate-950" />
-            <span>بدء التهيئة الذكية لـ Google Sheets</span>
-          </button>
-        </div>
-      )}
-
       {/* Header Banner & Welcome */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-zinc-900 border border-zinc-800 p-4 sm:p-6 rounded-3xl shadow-sm">
         <div>

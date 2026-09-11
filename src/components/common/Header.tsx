@@ -60,7 +60,7 @@ export const Header: React.FC = () => {
     <header className="sticky top-0 z-30 bg-zinc-900/95 backdrop-blur border-b border-zinc-800 text-zinc-100 px-3 sm:px-6 py-2.5">
       <div className="max-w-7xl mx-auto flex items-center justify-between gap-2 sm:gap-4">
         
-        {/* Brand & Project Selector */}
+          {/* Brand & Project Selector */}
         <div className="flex items-center gap-3 sm:gap-6 min-w-0">
           <div className="flex items-center gap-2.5 shrink-0">
             <div className="w-9 h-9 rounded-lg bg-amber-500 flex items-center justify-center text-zinc-950 font-bold shadow-sm">
@@ -74,30 +74,6 @@ export const Header: React.FC = () => {
               <p className="text-[11px] text-zinc-400 font-medium leading-none mt-0.5">{t.appTagline}</p>
             </div>
           </div>
-
-          {/* Active Role/Tenant Indicator */}
-          {activeSession && (
-            <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-800/80 border border-zinc-700/80 text-xs">
-              {activeSession.type === 'super_admin' ? (
-                <>
-                  <Crown className="w-3.5 h-3.5 text-amber-400" />
-                  <span className="font-semibold text-amber-300">المالك العام (Super Admin)</span>
-                </>
-              ) : activeSession.type === 'admin' ? (
-                <>
-                  <Building2 className="w-3.5 h-3.5 text-sky-400" />
-                  <span className="font-semibold text-zinc-200 truncate max-w-[130px]">{activeSession.name}</span>
-                  <span className="font-mono text-[10px] text-amber-400 bg-amber-500/10 px-1 py-0.2 rounded border border-amber-500/20">{activeSession.id}</span>
-                </>
-              ) : (
-                <>
-                  <HardHat className="w-3.5 h-3.5 text-emerald-400" />
-                  <span className="font-semibold text-zinc-200">مشرف ورش:</span>
-                  <span className="text-zinc-300 font-medium">{activeSession.name}</span>
-                </>
-              )}
-            </div>
-          )}
 
           {/* Project Selector */}
           <div className="relative flex items-center min-w-0 max-w-[200px] sm:max-w-xs">
@@ -164,31 +140,6 @@ export const Header: React.FC = () => {
             >
               <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
               <span className="font-semibold hidden sm:inline">دخول المنظومة</span>
-            </button>
-          )}
-
-          {/* Unified Master Google Sheets Connection Status */}
-          {activeSession && (
-            <button
-              id="btn-header-sheets-onboarding"
-              onClick={openSheetOnboarding}
-              className="flex items-center gap-1.5 text-xs px-2 sm:px-2.5 py-1.5 rounded-lg border bg-emerald-500/10 border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/20 transition-all cursor-pointer"
-              title={
-                activeSession.type === 'supervisor' 
-                  ? 'ورقة شيت المدير العام متصلة في الشيت الأساسي' 
-                  : isPlatformSuperAdmin 
-                    ? 'الشيت الأساسي للمنظومة متصل' 
-                    : `ورقة مقاولتك متصلة بالشيت الأساسي (${activeChantierSheet.tabName || 'جاهزة'})`
-              }
-            >
-              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
-              <span className="hidden lg:inline font-bold">
-                {activeSession.type === 'supervisor' 
-                  ? 'شيت المدير العام متصل ✓' 
-                  : isPlatformSuperAdmin 
-                    ? 'الشيت المركزي متصل ✓' 
-                    : `${activeChantierSheet.tabName || 'ورقة مقاولتي'} متصلة ✓`}
-              </span>
             </button>
           )}
 
