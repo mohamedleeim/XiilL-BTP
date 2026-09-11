@@ -122,16 +122,15 @@ export const ManagerSheetOnboardingModal: React.FC = () => {
             <div>
               <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-400/20 text-amber-200 border border-amber-300/30 mb-1">
                 <Sparkles className="w-3 h-3" />
-                فضاء المدير العام ({currentAdmin?.name || 'المقاول'})
+                فضاء {currentAdmin?.name || 'المقاول'} — منظومة الشيت الموحد
               </span>
               <h2 className="text-xl font-bold tracking-tight">
-                تهيئة ومزامنة جدول بيانات Google Sheets المركزي للأوراش
+                الشيت الأساسي المركزي ومعطيات أوراش المقاولة
               </h2>
             </div>
           </div>
           <p className="text-amber-100/90 text-sm mt-1 max-w-2xl leading-relaxed">
-            لضمان حفظ معطيات الأوراش، بوانطاج العمال، ومصاريف وسلع المقاولة في سحابة آمنة ومستقلة خاصة بك:
-            هل تود إنشاء جدول بيانات جديد تلقائياً عبر حساب Gmail، أم لديك مسبقاً ملف شيت؟
+            تم تخصيص ورقة عمل مستقلة لمقاولتك داخل الشيت الأساسي لـ Super Admin. أنت وجميع المشرفين معفيون تماماً من تسجيل الدخول بـ Gmail، ويتم توجيه جميع الحسابات والمعطيات تلقائياً إلى ورقتك.
           </p>
         </div>
 

@@ -151,12 +151,15 @@ export const SupervisorSheetSyncCard: React.FC<SupervisorSheetSyncCardProps> = (
         {activeChantierSheet.url ? (
           <div className="p-3 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/60 rounded-xl flex items-start gap-3">
             <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
-            <div className="text-xs space-y-1 flex-1">
-              <div className="font-bold text-emerald-900 dark:text-emerald-200">
-                ✅ أنت متصل بملف الشيت المعتمد: {activeChantierSheet.title || 'ملف XiilL BTP للأوراش'}
+            <div className="text-xs space-y-1.5 flex-1">
+              <div className="font-bold text-emerald-900 dark:text-emerald-200 flex items-center justify-between">
+                <span>✅ أنت متصل تلقائياً بورقة مديرك العام في الشيت الأساسي</span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-bold">
+                  معفى من تسجيل Gmail ✓
+                </span>
               </div>
               <div className="text-emerald-700 dark:text-emerald-300">
-                يتم توجيه جميع عمليات البوانطاج والمصاريف والسلع الخاصة بورشك إلى هذا الملف المركزي تلقائياً.
+                ورقة العمل المخصصة لمديرك العام: <span className="font-mono font-bold text-amber-500">{activeChantierSheet.tabName || `مقاول_${activeSession?.adminId}`}</span>. يتم توجيه ومزامنة كافة بوانطاج وسلع ومصاريف الورش إليها مباشرة في الشيت الأساسي لـ Super Admin.
               </div>
             </div>
           </div>

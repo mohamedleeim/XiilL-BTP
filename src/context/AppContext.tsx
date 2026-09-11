@@ -59,6 +59,7 @@ import {
   findOrCreateMasterSpreadsheet,
   KNOWN_MASTER_SPREADSHEET_ID,
   KNOWN_MASTER_SPREADSHEET_TITLE,
+  KNOWN_MASTER_SPREADSHEET_URL,
   ensureAdminRegistrySheet,
   saveAdminToRegistrySheet,
   fetchAdminRegistryFromSheet,
@@ -511,14 +512,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (isPlatformSuperAdmin && state.superAdminMode) {
       return state.projects;
     }
-    // 2. Supervisor session:
+    // 2. Supervisor session: sees all projects of their General Manager
     if (activeSession?.type === 'supervisor') {
-      const supervisor = state.users.find(u => u.id === activeSession.id) || state.currentUser;
-      if (supervisor.assignedProjectIds && !supervisor.assignedProjectIds.includes('*')) {
-        return state.projects.filter(p => supervisor.assignedProjectIds.includes(p.id));
+      const managerId = activeSession.adminId;
+      if (managerId) {
+        return state.projects.filter(p => !p.adminId || p.adminId.toUpperCase() === managerId.toUpperCase());
       }
+      const supervisor = state.users.find(u => u.id === activeSession.id) || state.currentUser;
       if (supervisor.adminId) {
-        return state.projects.filter(p => p.adminId === supervisor.adminId);
+        return state.projects.filter(p => !p.adminId || p.adminId.toUpperCase() === supervisor.adminId.toUpperCase());
       }
     }
     // 3. Client Admin / Manager active: MUST ONLY SEE THEIR OWN PROJECTS!
@@ -628,11 +630,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     setActiveSession(session);
     saveStoredSession(session);
-
-    // If this contractor does not yet have a linked Google Sheet, prompt onboarding
-    if (!found.sheetId && !isSuper) {
-      setIsSheetOnboardingOpen(true);
-    }
 
     let tenantOwner = state.users.find(u => u.adminId === found!.id && u.role === 'owner');
     if (!tenantOwner) {
@@ -2603,34 +2600,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const syncToGoogleSheets = async (targetAdminId?: string) => {
-    let sheetId: string | null | undefined = null;
+    // Unified Architecture: Always target the Master Google Sheet of Super Admin
+    const sheetId = state.workspaceConfig.masterSheetId || KNOWN_MASTER_SPREADSHEET_ID;
 
-    if (state.superAdminMode || state.currentAdmin?.role === 'super_admin') {
-      sheetId = state.workspaceConfig.masterSheetId || KNOWN_MASTER_SPREADSHEET_ID;
-    } else if (state.currentAdmin) {
-      sheetId = state.currentAdmin.sheetId || activeSession?.sheetId;
-      if (!sheetId) {
-        setIsSheetOnboardingOpen(true);
-        throw new Error('لم يتم ربط ملف Google Sheets خاص بمقاولتك بعد. يرجى إنشاء ملف مستقل لشركتك أو ربط رابطه أولاً.');
-      }
-    } else if (activeSession?.type === 'supervisor') {
-      const tenantAdmin = activeSession.adminId
-        ? state.adminAccounts.find(a => a.id.toUpperCase() === activeSession.adminId!.toUpperCase())
-        : null;
-      sheetId = state.workspaceConfig.supervisorSheetId || tenantAdmin?.sheetId;
-      if (!sheetId) {
-        throw new Error('لم يقم المقاول بربط ملف Google Sheets لأوراشه بعد. يرجى مراجعة المدير العام.');
-      }
-    } else {
-      sheetId = state.workspaceConfig.guestSheetId;
-    }
+    // Resolve target admin:
+    // Super Admin: 'ALL'
+    // Contractor: currentAdmin.id or activeSession.id
+    // Supervisor: activeSession.adminId
+    const effectiveAdminId = targetAdminId || (
+      state.superAdminMode || state.currentAdmin?.role === 'super_admin'
+        ? 'ALL'
+        : (state.currentAdmin?.id || activeSession?.adminId || activeSession?.id)
+    );
 
-    if (!sheetId) {
-      throw new Error('يرجى تحديد أو إنشاء ملف Google Sheets أولاً.');
-    }
-
-    // PUSH: System -> Google Sheets (Do NOT pull from sheet during a push)
-    const effectiveAdminId = targetAdminId || (state.superAdminMode ? 'ALL' : state.currentAdmin?.id);
     const res = await syncAllDataToGoogleSheets(sheetId, state, effectiveAdminId);
     
     setState(prev => {
@@ -2712,54 +2694,46 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const closeSheetOnboarding = () => setIsSheetOnboardingOpen(false);
 
   const activeChantierSheet = useMemo(() => {
+    const masterId = state.workspaceConfig.masterSheetId || KNOWN_MASTER_SPREADSHEET_ID;
+    const masterUrl = state.workspaceConfig.masterSheetUrl || KNOWN_MASTER_SPREADSHEET_URL;
+
     if (activeSession?.type === 'supervisor') {
-      if (state.workspaceConfig.supervisorSheetUrl) {
-        return {
-          id: state.workspaceConfig.supervisorSheetId || null,
-          url: state.workspaceConfig.supervisorSheetUrl,
-          title: state.workspaceConfig.masterSheetTitle || 'ملف الورش المخصص',
-          source: 'custom_pasted' as const
-        };
-      }
-      const tenantAdmin = activeSession.adminId
-        ? state.adminAccounts.find(a => a.id.toUpperCase() === activeSession.adminId!.toUpperCase())
+      const managerId = activeSession.adminId;
+      const tenantAdmin = managerId
+        ? state.adminAccounts.find(a => a.id.toUpperCase() === managerId.toUpperCase())
         : null;
-      const sheetId = tenantAdmin?.sheetId || null;
-      const sheetUrl = tenantAdmin?.sheetUrl || (sheetId ? `https://docs.google.com/spreadsheets/d/${sheetId}/edit` : null);
-      const sheetTitle = tenantAdmin?.sheetTitle || (tenantAdmin ? `ملف أوراش (${tenantAdmin.name})` : 'ملف الورش المخصص');
+      const managerName = tenantAdmin?.name || managerId || 'المدير العام';
 
       return {
-        id: sheetId,
-        url: sheetUrl,
-        title: sheetTitle,
-        source: (sheetId ? 'manager_inherited' : 'none') as 'manager_inherited' | 'none'
+        id: masterId,
+        url: masterUrl,
+        title: `ورقة المقاول (${managerName}) في الشيت الأساسي`,
+        tabName: managerId ? `مقاول_${managerId}` : undefined,
+        source: 'manager_inherited' as const
       };
     }
 
     const isSuper = state.superAdminMode || state.currentAdmin?.role === 'super_admin';
     if (isSuper) {
-      const sheetId = state.workspaceConfig.masterSheetId || KNOWN_MASTER_SPREADSHEET_ID;
-      const sheetUrl = state.workspaceConfig.masterSheetUrl || (sheetId ? `https://docs.google.com/spreadsheets/d/${sheetId}/edit` : null);
-      const sheetTitle = state.workspaceConfig.masterSheetTitle || KNOWN_MASTER_SPREADSHEET_TITLE;
-
       return {
-        id: sheetId,
-        url: sheetUrl,
-        title: sheetTitle,
+        id: masterId,
+        url: masterUrl,
+        title: state.workspaceConfig.masterSheetTitle || KNOWN_MASTER_SPREADSHEET_TITLE,
+        tabName: 'ALL',
         source: 'super_admin' as const
       };
     }
 
-    // Regular contractor: strict isolation to their own sheet
-    const sheetId = state.currentAdmin?.sheetId || activeSession?.sheetId || null;
-    const sheetUrl = state.currentAdmin?.sheetUrl || activeSession?.sheetUrl || (sheetId ? `https://docs.google.com/spreadsheets/d/${sheetId}/edit` : null);
-    const sheetTitle = state.currentAdmin?.sheetTitle || activeSession?.sheetTitle || (state.currentAdmin ? `ملف أوراش (${state.currentAdmin.name})` : null);
+    // Contractor (Admin): Dedicated tab inside Super Admin's Master Google Sheet
+    const contractorId = state.currentAdmin?.id || activeSession?.id;
+    const contractorName = state.currentAdmin?.name || activeSession?.name || 'المقاول';
 
     return {
-      id: sheetId,
-      url: sheetUrl,
-      title: sheetTitle,
-      source: (sheetId ? 'manager_inherited' : 'none') as 'manager_inherited' | 'none'
+      id: masterId,
+      url: masterUrl,
+      title: `ورقة مقاولتك (${contractorName}) في الشيت الأساسي`,
+      tabName: contractorId ? `مقاول_${contractorId}` : undefined,
+      source: 'manager_inherited' as const
     };
   }, [activeSession, state.workspaceConfig, state.adminAccounts, state.currentAdmin, state.superAdminMode]);
 
