@@ -21,7 +21,7 @@ import {
   Link2,
   Lock
 } from 'lucide-react';
-import { extractSpreadsheetId } from '../../services/googleWorkspace';
+import { extractSpreadsheetId, KNOWN_MASTER_SPREADSHEET_ID, KNOWN_MASTER_SPREADSHEET_TITLE } from '../../services/googleWorkspace';
 import { SupervisorSheetSyncCard } from './SupervisorSheetSyncCard';
 
 export const WorkspaceHubView: React.FC = () => {
@@ -32,6 +32,7 @@ export const WorkspaceHubView: React.FC = () => {
     syncToGoogleSheets, 
     createMasterSheet, 
     setGuestGoogleSheetUrl, 
+    setupManagerSheetFromPastedUrl,
     backupToDrive, 
     uploadToDrive, 
     sendChantierChatNotification, 
@@ -88,14 +89,22 @@ export const WorkspaceHubView: React.FC = () => {
     }
   };
 
+  const isSuperAdmin = superAdminMode || currentAdmin?.role === 'super_admin';
+  const isContractor = Boolean(currentAdmin && !isSuperAdmin);
+
   const handleSaveSheetUrl = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!sheetUrlInput.trim()) return;
     setIsLoading(true);
     setNotification(null);
     try {
-      const res = await setGuestGoogleSheetUrl(sheetUrlInput.trim());
-      setNotification({ type: 'success', text: res.message });
+      if (isContractor) {
+        const res = await setupManagerSheetFromPastedUrl(sheetUrlInput.trim(), true);
+        setNotification({ type: 'success', text: `تم ربط وفحص ملف مقاولتك بنجاح (${res.spreadsheetTitle})!` });
+      } else {
+        const res = await setGuestGoogleSheetUrl(sheetUrlInput.trim());
+        setNotification({ type: 'success', text: res.message });
+      }
     } catch (err: any) {
       setNotification({ type: 'error', text: err.message || 'رابط Google Sheets غير صالح.' });
     } finally {
@@ -194,8 +203,17 @@ export const WorkspaceHubView: React.FC = () => {
     }
   };
 
-  const activeSpreadsheetId = workspaceConfig.masterSheetId || workspaceConfig.guestSheetId;
-  const activeSpreadsheetUrl = workspaceConfig.masterSheetUrl || workspaceConfig.guestSheetUrl || (activeSpreadsheetId ? `https://docs.google.com/spreadsheets/d/${activeSpreadsheetId}` : null);
+  const activeSpreadsheetId = isSuperAdmin 
+    ? (workspaceConfig.masterSheetId || KNOWN_MASTER_SPREADSHEET_ID)
+    : (activeChantierSheet?.id || currentAdmin?.sheetId || null);
+
+  const activeSpreadsheetUrl = isSuperAdmin
+    ? (workspaceConfig.masterSheetUrl || (activeSpreadsheetId ? `https://docs.google.com/spreadsheets/d/${activeSpreadsheetId}` : null))
+    : (activeChantierSheet?.url || currentAdmin?.sheetUrl || (activeSpreadsheetId ? `https://docs.google.com/spreadsheets/d/${activeSpreadsheetId}` : null));
+
+  const activeSpreadsheetTitle = isSuperAdmin
+    ? (workspaceConfig.masterSheetTitle || KNOWN_MASTER_SPREADSHEET_TITLE)
+    : (activeChantierSheet?.title || currentAdmin?.sheetTitle || (currentAdmin ? `ملف أوراش (${currentAdmin.name})` : null));
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
@@ -300,30 +318,96 @@ export const WorkspaceHubView: React.FC = () => {
             <SupervisorSheetSyncCard />
           )}
 
-          {/* Smart Onboarding CTA for Manager */}
-          <div className="p-4 bg-gradient-to-r from-amber-500/10 via-amber-600/15 to-zinc-900 border border-amber-500/30 rounded-2xl flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-amber-500/20 text-amber-300 rounded-xl">
-                <Sparkles className="w-6 h-6" />
+          {/* Contractor Dedicated Isolated Workspace Card */}
+          {isContractor && (
+            <div className={`p-4 sm:p-5 rounded-2xl border transition-all ${
+              activeSpreadsheetId 
+                ? 'bg-zinc-900/90 border-emerald-500/30' 
+                : 'bg-gradient-to-r from-amber-500/10 via-amber-600/15 to-zinc-900 border-amber-500/40'
+            }`}>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-start gap-3">
+                  <div className={`p-2.5 rounded-xl shrink-0 mt-0.5 ${
+                    activeSpreadsheetId ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-300'
+                  }`}>
+                    <Sparkles className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm font-bold text-white">
+                        فضاء العمل السحابي المستقل الخاص بمقاولتك
+                      </h3>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                        {currentAdmin?.name || currentAdmin?.id}
+                      </span>
+                    </div>
+                    <p className="text-xs text-zinc-400 mt-1 leading-relaxed">
+                      {activeSpreadsheetId 
+                        ? 'أوراشك ومصاريفك وبيانات الـ CPS معزولة كلياً في جدول Google Sheets مستقل وخاص بشركتك، منفصل عن الإدارة وباقي المقاولين.'
+                        : 'كل مقاول يمتلك جدول Google Sheets مستقل تماماً لضمان الخصوصية التامة. يرجى تهيئة ملفك الخاص للبدء.'}
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  id="btn-contractor-sheet-setup"
+                  onClick={openSheetOnboarding}
+                  className="py-2.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-xs flex items-center justify-center gap-2 shadow-lg transition-all cursor-pointer whitespace-nowrap self-start sm:self-auto"
+                >
+                  <Sparkles className="w-4 h-4 text-zinc-950" />
+                  <span>{activeSpreadsheetId ? 'فحص أو تغيير ملف مقاولتك' : 'تهيئة ملف الشيت المستقل الآن'}</span>
+                </button>
               </div>
-              <div>
-                <h3 className="text-sm font-bold text-white">
-                  المعالج الذكي لربط وفحص الأوراق الثمانية (الخيار أ)
-                </h3>
-                <p className="text-xs text-zinc-400">
-                  فحص Google Drive التلقائي، مطابقة أوراق الورش والـ CPS، وإصلاح أي ورقة ناقصة ذاتياً.
-                </p>
-              </div>
+
+              {activeSpreadsheetId && (
+                <div className="mt-3 p-3 bg-zinc-950/80 rounded-xl border border-zinc-800 flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <div className="flex items-center gap-2">
+                    <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+                    <span className="text-zinc-400">الملف المرتبط:</span>
+                    <span className="text-emerald-300 font-bold">{activeSpreadsheetTitle || activeSpreadsheetId}</span>
+                  </div>
+                  {activeSpreadsheetUrl && (
+                    <a
+                      href={activeSpreadsheetUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-emerald-400 hover:underline flex items-center gap-1 font-semibold"
+                    >
+                      <span>فتح في Google Sheets</span>
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                  )}
+                </div>
+              )}
             </div>
-            <button
-              id="btn-trigger-smart-onboarding-hub"
-              onClick={openSheetOnboarding}
-              className="py-2.5 px-5 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-xs flex items-center gap-2 shadow-lg transition-all cursor-pointer"
-            >
-              <Sparkles className="w-4 h-4 text-zinc-950" />
-              <span>فتح معالج تهيئة ومطابقة الجداول</span>
-            </button>
-          </div>
+          )}
+
+          {/* Smart Onboarding CTA for Super Admin */}
+          {isSuperAdmin && (
+            <div className="p-4 bg-gradient-to-r from-amber-500/10 via-amber-600/15 to-zinc-900 border border-amber-500/30 rounded-2xl flex flex-wrap items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-amber-500/20 text-amber-300 rounded-xl">
+                  <Sparkles className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">
+                    المعالج الذكي للملف المركزي وسجل المقاولين (الخيار أ)
+                  </h3>
+                  <p className="text-xs text-zinc-400">
+                    فحص Google Drive التلقائي، مطابقة الأوراق الثمانية وسجل حسابات المقاولين المستقلين.
+                  </p>
+                </div>
+              </div>
+              <button
+                id="btn-trigger-smart-onboarding-hub"
+                onClick={openSheetOnboarding}
+                className="py-2.5 px-5 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-xs flex items-center gap-2 shadow-lg transition-all cursor-pointer"
+              >
+                <Sparkles className="w-4 h-4 text-zinc-950" />
+                <span>فتح معالج تهيئة ومطابقة الجداول</span>
+              </button>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           

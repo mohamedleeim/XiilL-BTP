@@ -616,20 +616,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       throw new Error(expiredMsg);
     }
 
+    const isSuper = found.role === 'super_admin';
     const session: ActiveSession = {
-      type: 'admin',
+      type: isSuper ? 'super_admin' : 'admin',
       id: found.id,
       name: found.name,
       email: found.email,
-      sheetId: found.sheetId || state.workspaceConfig.masterSheetId,
-      sheetUrl: found.sheetUrl || state.workspaceConfig.masterSheetUrl,
-      sheetTitle: found.sheetTitle || state.workspaceConfig.masterSheetTitle
+      sheetId: found.sheetId || (isSuper ? state.workspaceConfig.masterSheetId : undefined),
+      sheetUrl: found.sheetUrl || (isSuper ? state.workspaceConfig.masterSheetUrl : undefined),
+      sheetTitle: found.sheetTitle || (isSuper ? state.workspaceConfig.masterSheetTitle : undefined)
     };
     setActiveSession(session);
     saveStoredSession(session);
 
-    // If this general manager does not yet have a linked Google Sheet, prompt onboarding
-    if (!found.sheetId && !state.workspaceConfig.masterSheetId) {
+    // If this contractor does not yet have a linked Google Sheet, prompt onboarding
+    if (!found.sheetId && !isSuper) {
       setIsSheetOnboardingOpen(true);
     }
 
@@ -2285,10 +2286,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           type: 'admin',
           id: updatedAdmin.id,
           name: updatedAdmin.name,
-          email: updatedAdmin.email
+          email: updatedAdmin.email,
+          sheetId: updatedAdmin.sheetId || undefined,
+          sheetUrl: updatedAdmin.sheetUrl || undefined,
+          sheetTitle: updatedAdmin.sheetTitle || undefined
         };
         setActiveSession(session);
         saveStoredSession(session);
+
+        if (!updatedAdmin.sheetId) {
+          setIsSheetOnboardingOpen(true);
+        }
 
         setState(prev => ({
           ...prev,
@@ -2324,10 +2332,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             type: 'admin',
             id: activatedAdmin.id,
             name: activatedAdmin.name,
-            email: activatedAdmin.email
+            email: activatedAdmin.email,
+            sheetId: activatedAdmin.sheetId || undefined,
+            sheetUrl: activatedAdmin.sheetUrl || undefined,
+            sheetTitle: activatedAdmin.sheetTitle || undefined
           };
           setActiveSession(session);
           saveStoredSession(session);
+
+          if (!activatedAdmin.sheetId) {
+            setIsSheetOnboardingOpen(true);
+          }
 
           setState(prev => ({
             ...prev,
@@ -2588,21 +2603,54 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const syncToGoogleSheets = async (targetAdminId?: string) => {
-    const sheetId = state.workspaceConfig.masterSheetId || state.workspaceConfig.guestSheetId;
+    let sheetId: string | null | undefined = null;
+
+    if (state.superAdminMode || state.currentAdmin?.role === 'super_admin') {
+      sheetId = state.workspaceConfig.masterSheetId || KNOWN_MASTER_SPREADSHEET_ID;
+    } else if (state.currentAdmin) {
+      sheetId = state.currentAdmin.sheetId || activeSession?.sheetId;
+      if (!sheetId) {
+        setIsSheetOnboardingOpen(true);
+        throw new Error('لم يتم ربط ملف Google Sheets خاص بمقاولتك بعد. يرجى إنشاء ملف مستقل لشركتك أو ربط رابطه أولاً.');
+      }
+    } else if (activeSession?.type === 'supervisor') {
+      const tenantAdmin = activeSession.adminId
+        ? state.adminAccounts.find(a => a.id.toUpperCase() === activeSession.adminId!.toUpperCase())
+        : null;
+      sheetId = state.workspaceConfig.supervisorSheetId || tenantAdmin?.sheetId;
+      if (!sheetId) {
+        throw new Error('لم يقم المقاول بربط ملف Google Sheets لأوراشه بعد. يرجى مراجعة المدير العام.');
+      }
+    } else {
+      sheetId = state.workspaceConfig.guestSheetId;
+    }
+
     if (!sheetId) {
       throw new Error('يرجى تحديد أو إنشاء ملف Google Sheets أولاً.');
     }
 
     // PUSH: System -> Google Sheets (Do NOT pull from sheet during a push)
-    const res = await syncAllDataToGoogleSheets(sheetId, state, targetAdminId || (state.superAdminMode ? 'ALL' : state.currentAdmin?.id));
-    setState(prev => ({
-      ...prev,
-      workspaceConfig: {
-        ...prev.workspaceConfig,
-        lastSheetsSync: new Date().toISOString()
-      },
-      lastSyncTime: new Date().toISOString()
-    }));
+    const effectiveAdminId = targetAdminId || (state.superAdminMode ? 'ALL' : state.currentAdmin?.id);
+    const res = await syncAllDataToGoogleSheets(sheetId, state, effectiveAdminId);
+    
+    setState(prev => {
+      const nowIso = new Date().toISOString();
+      const updatedAdmin = prev.currentAdmin ? {
+        ...prev.currentAdmin,
+        lastSheetSync: nowIso
+      } : null;
+
+      return {
+        ...prev,
+        currentAdmin: updatedAdmin || prev.currentAdmin,
+        adminAccounts: updatedAdmin ? prev.adminAccounts.map(a => a.id === updatedAdmin.id ? updatedAdmin : a) : prev.adminAccounts,
+        workspaceConfig: {
+          ...prev.workspaceConfig,
+          lastSheetsSync: nowIso
+        },
+        lastSyncTime: nowIso
+      };
+    });
     return res;
   };
 
@@ -2676,38 +2724,54 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const tenantAdmin = activeSession.adminId
         ? state.adminAccounts.find(a => a.id.toUpperCase() === activeSession.adminId!.toUpperCase())
         : null;
-      const sheetId = tenantAdmin?.sheetId || state.workspaceConfig.masterSheetId || state.workspaceConfig.guestSheetId;
-      const sheetUrl = tenantAdmin?.sheetUrl || state.workspaceConfig.masterSheetUrl || state.workspaceConfig.guestSheetUrl;
-      const sheetTitle = tenantAdmin?.sheetTitle || state.workspaceConfig.masterSheetTitle || (tenantAdmin ? `ملف ${tenantAdmin.name}` : 'ملف المقاول المركزي');
+      const sheetId = tenantAdmin?.sheetId || null;
+      const sheetUrl = tenantAdmin?.sheetUrl || (sheetId ? `https://docs.google.com/spreadsheets/d/${sheetId}/edit` : null);
+      const sheetTitle = tenantAdmin?.sheetTitle || (tenantAdmin ? `ملف أوراش (${tenantAdmin.name})` : 'ملف الورش المخصص');
 
       return {
-        id: sheetId || null,
-        url: sheetUrl || null,
-        title: sheetTitle || null,
+        id: sheetId,
+        url: sheetUrl,
+        title: sheetTitle,
         source: (sheetId ? 'manager_inherited' : 'none') as 'manager_inherited' | 'none'
       };
     }
 
-    // Admin / Super Admin
-    const sheetId = state.currentAdmin?.sheetId || state.workspaceConfig.masterSheetId || state.workspaceConfig.guestSheetId;
-    const sheetUrl = state.currentAdmin?.sheetUrl || state.workspaceConfig.masterSheetUrl || state.workspaceConfig.guestSheetUrl;
-    const sheetTitle = state.currentAdmin?.sheetTitle || state.workspaceConfig.masterSheetTitle || 'الملف المركزي للأوراش';
+    const isSuper = state.superAdminMode || state.currentAdmin?.role === 'super_admin';
+    if (isSuper) {
+      const sheetId = state.workspaceConfig.masterSheetId || KNOWN_MASTER_SPREADSHEET_ID;
+      const sheetUrl = state.workspaceConfig.masterSheetUrl || (sheetId ? `https://docs.google.com/spreadsheets/d/${sheetId}/edit` : null);
+      const sheetTitle = state.workspaceConfig.masterSheetTitle || KNOWN_MASTER_SPREADSHEET_TITLE;
+
+      return {
+        id: sheetId,
+        url: sheetUrl,
+        title: sheetTitle,
+        source: 'super_admin' as const
+      };
+    }
+
+    // Regular contractor: strict isolation to their own sheet
+    const sheetId = state.currentAdmin?.sheetId || activeSession?.sheetId || null;
+    const sheetUrl = state.currentAdmin?.sheetUrl || activeSession?.sheetUrl || (sheetId ? `https://docs.google.com/spreadsheets/d/${sheetId}/edit` : null);
+    const sheetTitle = state.currentAdmin?.sheetTitle || activeSession?.sheetTitle || (state.currentAdmin ? `ملف أوراش (${state.currentAdmin.name})` : null);
 
     return {
-      id: sheetId || null,
-      url: sheetUrl || null,
-      title: sheetTitle || null,
+      id: sheetId,
+      url: sheetUrl,
+      title: sheetTitle,
       source: (sheetId ? 'manager_inherited' : 'none') as 'manager_inherited' | 'none'
     };
-  }, [activeSession, state.workspaceConfig, state.adminAccounts, state.currentAdmin]);
+  }, [activeSession, state.workspaceConfig, state.adminAccounts, state.currentAdmin, state.superAdminMode]);
 
   const setupManagerSheetWithGoogle = async (): Promise<SheetValidationResult> => {
     if (!isGoogleAuthenticated || !getAccessToken()) {
       await signInWithGoogle();
     }
 
+    const isSuper = state.superAdminMode || state.currentAdmin?.role === 'super_admin';
     const companyOrManagerName = state.currentAdmin?.companyName || state.currentAdmin?.name || 'المقاول العام';
-    const result = await findOrCreateManagerSpreadsheet(companyOrManagerName);
+    const adminId = state.currentAdmin?.id;
+    const result = await findOrCreateManagerSpreadsheet(companyOrManagerName, adminId);
 
     const updatedAdmin: AdminAccount | null = state.currentAdmin ? {
       ...state.currentAdmin,
@@ -2717,18 +2781,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       lastSheetSync: new Date().toISOString()
     } : null;
 
-    setState(prev => ({
-      ...prev,
-      currentAdmin: updatedAdmin || prev.currentAdmin,
-      adminAccounts: updatedAdmin ? prev.adminAccounts.map(a => a.id === updatedAdmin.id ? updatedAdmin : a) : prev.adminAccounts,
-      workspaceConfig: {
+    setState(prev => {
+      const nextAdminAccounts = updatedAdmin 
+        ? prev.adminAccounts.map(a => a.id === updatedAdmin.id ? updatedAdmin : a) 
+        : prev.adminAccounts;
+
+      const nextWorkspaceConfig = isSuper ? {
         ...prev.workspaceConfig,
         masterSheetId: result.spreadsheet.id,
         masterSheetUrl: result.spreadsheet.url,
         masterSheetTitle: result.spreadsheet.title,
         lastSheetsSync: new Date().toISOString()
-      }
-    }));
+      } : {
+        ...prev.workspaceConfig,
+        lastSheetsSync: new Date().toISOString()
+      };
+
+      return {
+        ...prev,
+        currentAdmin: updatedAdmin || prev.currentAdmin,
+        adminAccounts: nextAdminAccounts,
+        workspaceConfig: nextWorkspaceConfig
+      };
+    });
 
     if (activeSession) {
       const updatedSession: ActiveSession = {
@@ -2741,6 +2816,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       saveStoredSession(updatedSession);
     }
 
+    // Save contractor's newly linked sheet to Central Registry if available
+    const centralMasterId = state.workspaceConfig.masterSheetId || KNOWN_MASTER_SPREADSHEET_ID;
+    if (updatedAdmin && centralMasterId && !isSuper) {
+      saveAdminToRegistrySheet(centralMasterId, updatedAdmin).catch(err => {
+        console.warn('Syncing contractor sheet ID to master registry failed silently:', err);
+      });
+    }
+
     return result.validation;
   };
 
@@ -2750,7 +2833,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       throw new Error('رابط Google Sheets غير صالح. يرجى التأكد من نسخ الرابط بالكامل.');
     }
 
-    const validation = await inspectAndRepairSpreadsheet(sheetId, autoRepair);
+    const isSuper = state.superAdminMode || state.currentAdmin?.role === 'super_admin';
+    const validation = await inspectAndRepairSpreadsheet(sheetId, autoRepair, !isSuper);
 
     const updatedAdmin: AdminAccount | null = state.currentAdmin ? {
       ...state.currentAdmin,
@@ -2760,18 +2844,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       lastSheetSync: new Date().toISOString()
     } : null;
 
-    setState(prev => ({
-      ...prev,
-      currentAdmin: updatedAdmin || prev.currentAdmin,
-      adminAccounts: updatedAdmin ? prev.adminAccounts.map(a => a.id === updatedAdmin.id ? updatedAdmin : a) : prev.adminAccounts,
-      workspaceConfig: {
+    setState(prev => {
+      const nextAdminAccounts = updatedAdmin 
+        ? prev.adminAccounts.map(a => a.id === updatedAdmin.id ? updatedAdmin : a) 
+        : prev.adminAccounts;
+
+      const nextWorkspaceConfig = isSuper ? {
         ...prev.workspaceConfig,
         masterSheetId: validation.spreadsheetId,
         masterSheetUrl: url,
         masterSheetTitle: validation.spreadsheetTitle,
         lastSheetsSync: new Date().toISOString()
-      }
-    }));
+      } : {
+        ...prev.workspaceConfig,
+        lastSheetsSync: new Date().toISOString()
+      };
+
+      return {
+        ...prev,
+        currentAdmin: updatedAdmin || prev.currentAdmin,
+        adminAccounts: nextAdminAccounts,
+        workspaceConfig: nextWorkspaceConfig
+      };
+    });
 
     if (activeSession) {
       const updatedSession: ActiveSession = {
@@ -2782,6 +2877,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
       setActiveSession(updatedSession);
       saveStoredSession(updatedSession);
+    }
+
+    // Save contractor's newly linked sheet to Central Registry if available
+    const centralMasterId = state.workspaceConfig.masterSheetId || KNOWN_MASTER_SPREADSHEET_ID;
+    if (updatedAdmin && centralMasterId && !isSuper) {
+      saveAdminToRegistrySheet(centralMasterId, updatedAdmin).catch(err => {
+        console.warn('Syncing contractor sheet ID to master registry failed silently:', err);
+      });
     }
 
     return validation;

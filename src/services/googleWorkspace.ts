@@ -458,10 +458,12 @@ export const searchDriveForBtpSpreadsheets = async (): Promise<Array<{ id: strin
  */
 export const inspectAndRepairSpreadsheet = async (
   spreadsheetId: string,
-  autoRepair: boolean = false
+  autoRepair: boolean = false,
+  isTenant: boolean = false
 ): Promise<SheetValidationResult> => {
   const token = getAccessToken();
   const url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
+  const targetDefs = isTenant ? BTP_STANDARD_SHEETS.filter(s => s.title !== 'Admin_Registry') : BTP_STANDARD_SHEETS;
 
   // 1. Authenticated Google Sheets API v4 Check
   if (token) {
@@ -482,7 +484,7 @@ export const inspectAndRepairSpreadsheet = async (
     const missing: BtpSheetDefinition[] = [];
     const existing: string[] = [];
 
-    for (const def of BTP_STANDARD_SHEETS) {
+    for (const def of targetDefs) {
       const found = sheetsList.some(
         title => title.toLowerCase().trim() === def.title.toLowerCase().trim()
       );
@@ -552,7 +554,7 @@ export const inspectAndRepairSpreadsheet = async (
           const headerUpdates: any[] = [];
 
           existing.forEach((title, idx) => {
-            const def = BTP_STANDARD_SHEETS.find(d => d.title.toLowerCase().trim() === title.toLowerCase().trim());
+            const def = targetDefs.find(d => d.title.toLowerCase().trim() === title.toLowerCase().trim());
             if (!def) return;
             const currentHeaders = valueRanges[idx]?.values?.[0] || [];
             // If row 1 is empty or has fewer columns than required, write the full standard header row
@@ -581,7 +583,7 @@ export const inspectAndRepairSpreadsheet = async (
       }
     }
 
-    const tabStatuses: SheetTabStatus[] = BTP_STANDARD_SHEETS.map(def => {
+    const tabStatuses: SheetTabStatus[] = targetDefs.map(def => {
       const isExisting = existing.includes(def.title);
       const isRepaired = repairedTitles.includes(def.title);
       return {
@@ -606,7 +608,7 @@ export const inspectAndRepairSpreadsheet = async (
       repaired,
       tabStatuses,
       message: allTabsPresent
-        ? (repaired ? 'تم فحص الملف: تمت إضافة وتنسيق الأوراق ورؤوس الأعمدة الناقصة تلقائياً بنجاح!' : 'تم التحقق بنجاح: جميع الأوراق الثمانية ورؤوس الأعمدة متطابقة وجاهزة 100%!')
+        ? (repaired ? 'تم فحص الملف: تمت إضافة وتنسيق الأوراق ورؤوس الأعمدة الناقصة تلقائياً بنجاح!' : `تم التحقق بنجاح: جميع الأوراق (${targetDefs.length}) ورؤوس الأعمدة متطابقة وجاهزة 100%!`)
         : `الملف تنقصه ${missing.length} أوراق رئيسية لمطابقة هيكل الأوراش.`
     };
   }
@@ -616,7 +618,7 @@ export const inspectAndRepairSpreadsheet = async (
   const tabStatuses: SheetTabStatus[] = [];
   let foundCount = 0;
 
-  for (const def of BTP_STANDARD_SHEETS) {
+  for (const def of targetDefs) {
     let isFound = false;
     try {
       const gvizUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(def.title)}&range=A1:B1`;
@@ -640,7 +642,7 @@ export const inspectAndRepairSpreadsheet = async (
     });
   }
 
-  const allTabsPresent = foundCount === BTP_STANDARD_SHEETS.length;
+  const allTabsPresent = foundCount === targetDefs.length;
 
   return {
     success: foundCount > 0,
@@ -648,26 +650,29 @@ export const inspectAndRepairSpreadsheet = async (
     spreadsheetTitle: 'ملف Google Sheets المعتمد للورش',
     url,
     existingTabs: tabStatuses.filter(t => t.status === 'ok').map(t => t.title),
-    missingTabs: BTP_STANDARD_SHEETS.filter(def => tabStatuses.find(t => t.title === def.title)?.status === 'missing'),
+    missingTabs: targetDefs.filter(def => tabStatuses.find(t => t.title === def.title)?.status === 'missing'),
     allTabsPresent,
     repaired: false,
     tabStatuses,
     message: allTabsPresent
-      ? 'تم التحقق بنجاح: ملف الشيت هو هو وجميع الأوراق الثمانية متطابقة وجاهزة!'
+      ? `تم التحقق بنجاح: ملف الشيت هو هو وجميع الأوراق (${targetDefs.length}) متطابقة وجاهزة!`
       : (foundCount > 0 
-          ? `تم التحقق: وُجدت ${foundCount} أوراق من أصل 8. تأكد من أن الملف تمت مشاركته بالكامل.` 
+          ? `تم التحقق: وُجدت ${foundCount} أوراق من أصل ${targetDefs.length}. تأكد من أن الملف تمت مشاركته بالكامل.` 
           : 'تعذر التحقق من محتوى الملف. يرجى التأكد من أن الرابط صحيح وأن الملف متاح لمن لديه الرابط (Tous les utilisateurs avec le lien).')
   };
 };
 
 /**
- * Create a new Master Google Spreadsheet in the user's Drive with all 8 sheets & headers initialized
+ * Create a new Master Google Spreadsheet in the user's Drive with all standard sheets & headers initialized
  */
 export const createMasterSpreadsheet = async (
-  title: string = 'XiilL BTP — Système Central de Gestion des Chantiers'
+  title: string = 'XiilL BTP — Système Central de Gestion des Chantiers',
+  isTenant: boolean = false
 ): Promise<{ id: string; url: string; title: string }> => {
   const token = getAccessToken();
   if (!token) throw new Error('يرجى تسجيل الدخول بـ Gmail أولاً لإنشاء ملف Google Sheets');
+
+  const sheetsToCreate = isTenant ? BTP_STANDARD_SHEETS.filter(s => s.title !== 'Admin_Registry') : BTP_STANDARD_SHEETS;
 
   const body = {
     properties: {
@@ -675,7 +680,7 @@ export const createMasterSpreadsheet = async (
       locale: 'fr_FR',
       autoRecalc: 'ON_CHANGE'
     },
-    sheets: BTP_STANDARD_SHEETS.map((s, index) => ({
+    sheets: sheetsToCreate.map((s, index) => ({
       properties: {
         title: s.title,
         index,
@@ -702,9 +707,9 @@ export const createMasterSpreadsheet = async (
   const spreadsheetId = data.spreadsheetId;
   const url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
 
-  // Initialize header rows immediately for all 8 sheets!
+  // Initialize header rows immediately for all created sheets!
   try {
-    const dataPayload = BTP_STANDARD_SHEETS.map(m => ({
+    const dataPayload = sheetsToCreate.map(m => ({
       range: `${m.title}!A1:${String.fromCharCode(65 + Math.min(m.headers.length - 1, 25))}1`,
       values: [m.headers]
     }));
@@ -809,7 +814,8 @@ export const findOrCreateMasterSpreadsheet = async (
  * 3. If none -> creates brand new master spreadsheet with all 8 sheets.
  */
 export const findOrCreateManagerSpreadsheet = async (
-  managerOrCompanyName: string = 'المقاول العام'
+  managerOrCompanyName: string = 'المقاول العام',
+  adminId?: string
 ): Promise<{
   spreadsheet: { id: string; url: string; title: string };
   isExisting: boolean;
@@ -818,28 +824,35 @@ export const findOrCreateManagerSpreadsheet = async (
   const token = getAccessToken();
   if (!token) throw new Error('يرجى تسجيل الدخول بـ Gmail أولاً لإدارة Google Sheets');
 
-  // Step 1: Search Drive for existing spreadsheet
+  // Step 1: Search Drive for existing spreadsheet specifically for this contractor (by adminId or company name)
   const existingFiles = await searchDriveForBtpSpreadsheets();
 
   if (existingFiles.length > 0) {
-    const targetFile = existingFiles[0];
-    // Inspect and auto-repair any missing sheets!
-    const validation = await inspectAndRepairSpreadsheet(targetFile.id, true);
-    return {
-      spreadsheet: {
-        id: targetFile.id,
-        url: targetFile.url,
-        title: targetFile.name
-      },
-      isExisting: true,
-      validation
-    };
+    const matchedFile = adminId
+      ? existingFiles.find(f => f.name.includes(adminId) || (managerOrCompanyName && f.name.includes(managerOrCompanyName)))
+      : existingFiles.find(f => !f.name.includes('المنظومة المركزية'));
+
+    if (matchedFile) {
+      // Inspect and auto-repair any missing operational sheets!
+      const validation = await inspectAndRepairSpreadsheet(matchedFile.id, true, true);
+      return {
+        spreadsheet: {
+          id: matchedFile.id,
+          url: matchedFile.url,
+          title: matchedFile.name
+        },
+        isExisting: true,
+        validation
+      };
+    }
   }
 
-  // Step 2: If none exists, create a brand new one
-  const cleanTitle = `XiilL BTP — ${managerOrCompanyName} (Chantiers & Gestion)`;
-  const created = await createMasterSpreadsheet(cleanTitle);
-  const validation = await inspectAndRepairSpreadsheet(created.id, false);
+  // Step 2: If none exists, create a brand new isolated spreadsheet for this contractor (tenant)
+  const cleanTitle = adminId 
+    ? `XiilL BTP — ${managerOrCompanyName} (${adminId})`
+    : `XiilL BTP — ${managerOrCompanyName} (Chantiers & Gestion)`;
+  const created = await createMasterSpreadsheet(cleanTitle, true);
+  const validation = await inspectAndRepairSpreadsheet(created.id, true, true);
 
   return {
     spreadsheet: created,
@@ -946,10 +959,12 @@ export const saveAdminToRegistrySheet = async (
     statusDisplay,
     admin.createdAt,
     admin.lastLoginAt || 'لم يدخل بعد',
-    admin.notes || (admin.companyName ? `مقاول: ${admin.companyName}` : '')
+    admin.notes || (admin.companyName ? `مقاول: ${admin.companyName}` : ''),
+    admin.sheetId || '',
+    admin.sheetUrl || ''
   ];
 
-  const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Admin_Registry!A:L:append?valueInputOption=USER_ENTERED`, {
+  const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Admin_Registry!A:N:append?valueInputOption=USER_ENTERED`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -988,7 +1003,9 @@ export const pushAdminsToMasterSheet = async (
       'Status (الحالة التلقائية)',
       'CreatedAt (تاريخ التسجيل)',
       'LastLogin (آخر دخول)',
-      'Notes (ملاحظات)'
+      'Notes (ملاحظات)',
+      'Sheet ID (معرف شيت المقاول)',
+      'Sheet URL (رابط الشيت المستقل)'
     ],
     ...admins.map(a => {
       const autoStatus = computeAutoStatus(a.subscription, a.status);
@@ -1004,14 +1021,16 @@ export const pushAdminsToMasterSheet = async (
         formatAutoStatusDisplay(autoStatus, a.subscription?.tier),
         a.createdAt,
         a.lastLoginAt || 'لم يدخل بعد',
-        a.notes || ''
+        a.notes || '',
+        a.sheetId || '',
+        a.sheetUrl || ''
       ];
     })
   ];
 
   // 1. Clear old data from row 2 downwards so any deleted contractor is completely wiped
   try {
-    await fetchWithRetry(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Admin_Registry!A2:L500:clear`, {
+    await fetchWithRetry(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Admin_Registry!A2:N500:clear`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` }
     });
@@ -1105,7 +1124,9 @@ export const fetchAdminRegistryFromSheet = async (
       status: 7,
       createdAt: 8,
       lastLogin: 9,
-      notes: 10
+      notes: 10,
+      sheetId: -1,
+      sheetUrl: -1
     };
 
     if (isFirstRowHeader) {
@@ -1122,6 +1143,8 @@ export const fetchAdminRegistryFromSheet = async (
         else if (h.includes('status') || h.includes('الحالة')) colMap.status = idx;
         else if (h.includes('created') || h.includes('تسجيل')) colMap.createdAt = idx;
         else if (h.includes('login') || h.includes('دخول')) colMap.lastLogin = idx;
+        else if (h.includes('sheet id') || h.includes('معرف شيت')) colMap.sheetId = idx;
+        else if (h.includes('sheet url') || h.includes('رابط الشيت')) colMap.sheetUrl = idx;
         else if (h.includes('note') || h.includes('ملاحظ')) colMap.notes = idx;
       });
     }
@@ -1199,6 +1222,9 @@ export const fetchAdminRegistryFromSheet = async (
         subscription.status = 'expired';
       }
 
+      const sheetIdVal = colMap.sheetId !== -1 ? (row[colMap.sheetId] || '').trim() : '';
+      const sheetUrlVal = colMap.sheetUrl !== -1 ? (row[colMap.sheetUrl] || '').trim() : '';
+
       return {
         id: adminId,
         email,
@@ -1209,7 +1235,9 @@ export const fetchAdminRegistryFromSheet = async (
         subscription,
         createdAt,
         lastLoginAt,
-        notes
+        notes,
+        sheetId: sheetIdVal || undefined,
+        sheetUrl: sheetUrlVal || (sheetIdVal ? `https://docs.google.com/spreadsheets/d/${sheetIdVal}/edit` : undefined)
       };
     }).filter((a): a is AdminAccount => Boolean(a && a.id && a.email));
   } catch (err) {
