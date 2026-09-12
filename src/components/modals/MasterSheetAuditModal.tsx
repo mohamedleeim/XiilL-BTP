@@ -192,7 +192,7 @@ export const MasterSheetAuditModal: React.FC = () => {
             }`}
           >
             <Table className="w-4 h-4" />
-            فحص رؤوس الأعمدة ({auditReport?.columnsComparison?.filter(c => !c.match).length || 0})
+            فحص رؤوس الأعمدة ({auditReport?.columnsComparison?.filter(c => c.status !== 'perfect').length || 0})
           </button>
           <button
             onClick={() => setActiveTab('data')}
@@ -214,7 +214,7 @@ export const MasterSheetAuditModal: React.FC = () => {
             }`}
           >
             <Trash2 className="w-4 h-4" />
-            الأوراق القديمة / المستقلة ({auditReport?.legacySheetsFound?.length || 0})
+            الأوراق القديمة / المستقلة ({auditReport?.legacyTabs?.length || 0})
           </button>
         </div>
 
@@ -231,15 +231,13 @@ export const MasterSheetAuditModal: React.FC = () => {
                     <Layers className="w-4 h-4 text-indigo-500" />
                   </div>
                   <div className="text-2xl font-bold text-slate-800">
-                    {auditReport?.discoveredSheets?.filter(s =>
-                      ['Admin_Registry', 'Chantiers_Projets', 'Bordereau_CPS', 'Pointage_Journalier', 'Paie_Ouvriers', 'Achats_Fournisseurs', 'Depenses_Chantier', 'Decomptes_Clients'].includes(s)
-                    ).length || 0}
+                    {auditReport?.columnsComparison?.filter(c => c.status !== 'missing_tab').length || 0}
                     <span className="text-sm font-normal text-slate-400 mr-1">/ 8 أوراق</span>
                   </div>
                   <div className="text-xs text-slate-500 mt-1">
-                    {auditReport?.missingStandardSheets?.length === 0
+                    {auditReport?.columnsComparison?.every(c => c.status !== 'missing_tab')
                       ? 'جميع الأوراق المعيارية موجودة'
-                      : `ينقص ${auditReport?.missingStandardSheets?.length || 0} أوراق`}
+                      : `ينقص ${auditReport?.columnsComparison?.filter(c => c.status === 'missing_tab').length || 0} أوراق`}
                   </div>
                 </div>
 
@@ -249,11 +247,11 @@ export const MasterSheetAuditModal: React.FC = () => {
                     <Trash2 className="w-4 h-4 text-amber-500" />
                   </div>
                   <div className="text-2xl font-bold text-slate-800">
-                    {auditReport?.legacySheetsFound?.length || 0}
+                    {auditReport?.legacyTabs?.length || 0}
                     <span className="text-sm font-normal text-slate-400 mr-1">ورقة زائدة</span>
                   </div>
                   <div className="text-xs text-slate-500 mt-1">
-                    {auditReport?.legacySheetsFound && auditReport.legacySheetsFound.length > 0
+                    {(auditReport?.legacyTabs?.length || 0) > 0
                       ? 'أوراق سابقة لنظام الاستقلالية القديم'
                       : 'الملف نظيف من الأوراق القديمة'}
                   </div>
@@ -265,7 +263,7 @@ export const MasterSheetAuditModal: React.FC = () => {
                     <Database className="w-4 h-4 text-emerald-500" />
                   </div>
                   <div className="text-2xl font-bold text-slate-800">
-                    {auditReport?.fetchedData?.admins?.length || state.adminAccounts.length}
+                    {auditReport?.fetchedData?.admins?.length ?? (state.adminAccounts || []).length}
                     <span className="text-sm font-normal text-slate-400 mr-1">حساب مقاول</span>
                   </div>
                   <div className="text-xs text-slate-500 mt-1">
@@ -344,68 +342,85 @@ export const MasterSheetAuditModal: React.FC = () => {
 
               <div className="space-y-3">
                 {auditReport?.columnsComparison && auditReport.columnsComparison.length > 0 ? (
-                  auditReport.columnsComparison.map((item, idx) => (
-                    <div
-                      key={idx}
-                      className={`bg-white rounded-xl border p-4 shadow-xs ${
-                        item.match ? 'border-slate-200' : 'border-amber-300 bg-amber-50/20'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-2">
-                          <Table className="w-4 h-4 text-indigo-600" />
-                          <h5 className="font-bold text-sm text-slate-800">{item.sheetName}</h5>
+                  auditReport.columnsComparison.map((item, idx) => {
+                    const isPerfect = item.status === 'perfect';
+                    const isMissingTab = item.status === 'missing_tab';
+                    const missingHeaders = item.missingHeaders || [];
+                    const extraHeaders = item.extraHeaders || [];
+                    return (
+                      <div
+                        key={idx}
+                        className={`bg-white rounded-xl border p-4 shadow-xs ${
+                          isPerfect
+                            ? 'border-slate-200'
+                            : isMissingTab
+                            ? 'border-rose-300 bg-rose-50/20'
+                            : 'border-amber-300 bg-amber-50/20'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <Table className="w-4 h-4 text-indigo-600" />
+                            <h5 className="font-bold text-sm text-slate-800">
+                              {item.sheetTitle} <span className="text-xs text-slate-500 font-normal">({item.sheetLabel})</span>
+                            </h5>
+                          </div>
+                          {isPerfect ? (
+                            <span className="text-xs px-2.5 py-0.5 rounded-full font-medium bg-emerald-100 text-emerald-700 flex items-center gap-1">
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              الأعمدة متطابقة
+                            </span>
+                          ) : isMissingTab ? (
+                            <span className="text-xs px-2.5 py-0.5 rounded-full font-medium bg-rose-100 text-rose-800 flex items-center gap-1">
+                              <AlertTriangle className="w-3.5 h-3.5" />
+                              الورقة غير موجودة بالشيت
+                            </span>
+                          ) : (
+                            <span className="text-xs px-2.5 py-0.5 rounded-full font-medium bg-amber-100 text-amber-800 flex items-center gap-1">
+                              <AlertTriangle className="w-3.5 h-3.5" />
+                              فروقات في الأعمدة
+                            </span>
+                          )}
                         </div>
-                        {item.match ? (
-                          <span className="text-xs px-2.5 py-0.5 rounded-full font-medium bg-emerald-100 text-emerald-700 flex items-center gap-1">
-                            <CheckCircle2 className="w-3.5 h-3.5" />
-                            الأعمدة متطابقة
-                          </span>
-                        ) : (
-                          <span className="text-xs px-2.5 py-0.5 rounded-full font-medium bg-amber-100 text-amber-800 flex items-center gap-1">
-                            <AlertTriangle className="w-3.5 h-3.5" />
-                            فروقات في الأعمدة
-                          </span>
+
+                        {missingHeaders.length > 0 && (
+                          <div className="mt-2 text-xs">
+                            <span className="font-semibold text-rose-700 block mb-1">
+                              أعمدة معيارية ناقصة في الشيت ({missingHeaders.length}):
+                            </span>
+                            <div className="flex flex-wrap gap-1.5">
+                              {missingHeaders.map((col, cIdx) => (
+                                <span
+                                  key={cIdx}
+                                  className="px-2 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200 font-mono text-[11px]"
+                                >
+                                  {col}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {extraHeaders.length > 0 && (
+                          <div className="mt-2 text-xs">
+                            <span className="font-semibold text-slate-600 block mb-1">
+                              أعمدة إضافية موجودة بالشيت ({extraHeaders.length}):
+                            </span>
+                            <div className="flex flex-wrap gap-1.5">
+                              {extraHeaders.map((col, cIdx) => (
+                                <span
+                                  key={cIdx}
+                                  className="px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 font-mono text-[11px]"
+                                >
+                                  {col}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
                         )}
                       </div>
-
-                      {item.missingInSheet.length > 0 && (
-                        <div className="mt-2 text-xs">
-                          <span className="font-semibold text-rose-700 block mb-1">
-                            أعمدة معيارية ناقصة في الشيت ({item.missingInSheet.length}):
-                          </span>
-                          <div className="flex flex-wrap gap-1.5">
-                            {item.missingInSheet.map((col, cIdx) => (
-                              <span
-                                key={cIdx}
-                                className="px-2 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200 font-mono text-[11px]"
-                              >
-                                {col}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {item.extraInSheet.length > 0 && (
-                        <div className="mt-2 text-xs">
-                          <span className="font-semibold text-slate-600 block mb-1">
-                            أعمدة إضافية موجودة بالشيت ({item.extraInSheet.length}):
-                          </span>
-                          <div className="flex flex-wrap gap-1.5">
-                            {item.extraInSheet.map((col, cIdx) => (
-                              <span
-                                key={cIdx}
-                                className="px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 font-mono text-[11px]"
-                              >
-                                {col}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ))
+                    );
+                  })
                 ) : (
                   <div className="p-8 text-center text-slate-400 bg-white rounded-xl border border-slate-200">
                     لا تتوفر تفاصيل فحص الأعمدة حالياً. يرجى الضغط على زر إعادة الفحص.
@@ -436,33 +451,37 @@ export const MasterSheetAuditModal: React.FC = () => {
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-slate-700">
                     {auditReport?.entityCounts && auditReport.entityCounts.length > 0 ? (
-                      auditReport.entityCounts.map((ec, idx) => (
-                        <tr key={idx} className="hover:bg-slate-50/80">
-                          <td className="py-2.5 px-4 font-medium text-slate-900">{ec.entityName}</td>
-                          <td className="py-2.5 px-4 text-center font-mono font-bold text-slate-800">{ec.systemCount}</td>
-                          <td className="py-2.5 px-4 text-center font-mono font-bold text-indigo-700">{ec.sheetCount}</td>
-                          <td className="py-2.5 px-4 text-center font-mono">
-                            {ec.diff === 0 ? (
-                              <span className="text-slate-400">0</span>
-                            ) : ec.diff > 0 ? (
-                              <span className="text-emerald-600 font-bold">+{ec.diff} بالشيت</span>
-                            ) : (
-                              <span className="text-amber-600 font-bold">{ec.diff}</span>
-                            )}
-                          </td>
-                          <td className="py-2.5 px-4 text-center">
-                            {ec.diff === 0 ? (
-                              <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-semibold">
-                                متطابق
-                              </span>
-                            ) : (
-                              <span className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-semibold">
-                                يحتاج دمج
-                              </span>
-                            )}
-                          </td>
-                        </tr>
-                      ))
+                      auditReport.entityCounts.map((ec, idx) => {
+                        const diff = (ec.countInSheet || 0) - (ec.countInSystem || 0);
+                        const isMatched = ec.status === 'matched' || ec.status === 'empty_both';
+                        return (
+                          <tr key={idx} className="hover:bg-slate-50/80">
+                            <td className="py-2.5 px-4 font-medium text-slate-900">{ec.label}</td>
+                            <td className="py-2.5 px-4 text-center font-mono font-bold text-slate-800">{ec.countInSystem || 0}</td>
+                            <td className="py-2.5 px-4 text-center font-mono font-bold text-indigo-700">{ec.countInSheet || 0}</td>
+                            <td className="py-2.5 px-4 text-center font-mono">
+                              {diff === 0 ? (
+                                <span className="text-slate-400">0</span>
+                              ) : diff > 0 ? (
+                                <span className="text-emerald-600 font-bold">+{diff} بالشيت</span>
+                              ) : (
+                                <span className="text-amber-600 font-bold">{diff}</span>
+                              )}
+                            </td>
+                            <td className="py-2.5 px-4 text-center">
+                              {isMatched ? (
+                                <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-semibold">
+                                  متطابق
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-semibold">
+                                  يحتاج دمج
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })
                     ) : (
                       <tr>
                         <td colSpan={5} className="py-6 text-center text-slate-400">
@@ -489,9 +508,9 @@ export const MasterSheetAuditModal: React.FC = () => {
 
               <div className="bg-white rounded-xl border border-slate-200 shadow-xs p-4">
                 <h5 className="font-bold text-xs text-slate-700 mb-3">الأوراق الزائدة المكتشفة في الملف المركزي:</h5>
-                {auditReport?.legacySheetsFound && auditReport.legacySheetsFound.length > 0 ? (
+                {auditReport?.legacyTabs && auditReport.legacyTabs.length > 0 ? (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {auditReport.legacySheetsFound.map((name, idx) => (
+                    {auditReport.legacyTabs.map((name, idx) => (
                       <div
                         key={idx}
                         className="p-2.5 rounded-lg border border-slate-200 bg-slate-50 flex items-center justify-between text-xs"

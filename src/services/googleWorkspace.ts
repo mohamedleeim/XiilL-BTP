@@ -1401,78 +1401,87 @@ export const auditMasterSheetBidirectional = async (
   // 3. Parse and count records in each sheet vs System
   const parsedEntities = parseAllOperationalDataFromRows(fetchedSheetData);
 
+  const localAdmins = state.adminAccounts || [];
+  const localProjects = state.projects || [];
+  const localCps = state.cpsArticles || [];
+  const localWorkers = state.workers || [];
+  const localAttendance = state.attendance || [];
+  const localPurchases = state.purchases || [];
+  const localExpenses = state.expenses || [];
+  const localClientPayments = state.clientPayments || [];
+
   const entityCounts: SheetEntityCountComparison[] = [
     {
       entity: 'adminAccounts',
       label: 'المقاولون المسجلون (Admins)',
       countInSheet: parsedEntities.admins.length,
-      countInSystem: state.adminAccounts.length,
-      status: parsedEntities.admins.length === state.adminAccounts.length
+      countInSystem: localAdmins.length,
+      status: parsedEntities.admins.length === localAdmins.length
         ? (parsedEntities.admins.length === 0 ? 'empty_both' : 'matched')
-        : (parsedEntities.admins.length > state.adminAccounts.length ? 'sheet_has_more' : 'system_has_more')
+        : (parsedEntities.admins.length > localAdmins.length ? 'sheet_has_more' : 'system_has_more')
     },
     {
       entity: 'projects',
       label: 'أوراش ومشاريع البناء (Chantiers)',
       countInSheet: parsedEntities.projects.length,
-      countInSystem: state.projects.length,
-      status: parsedEntities.projects.length === state.projects.length
+      countInSystem: localProjects.length,
+      status: parsedEntities.projects.length === localProjects.length
         ? (parsedEntities.projects.length === 0 ? 'empty_both' : 'matched')
-        : (parsedEntities.projects.length > state.projects.length ? 'sheet_has_more' : 'system_has_more')
+        : (parsedEntities.projects.length > localProjects.length ? 'sheet_has_more' : 'system_has_more')
     },
     {
       entity: 'cpsArticles',
       label: 'بنود دفتر التحملات (Bordereau CPS)',
       countInSheet: parsedEntities.cpsArticles.length,
-      countInSystem: state.cpsArticles.length,
-      status: parsedEntities.cpsArticles.length === state.cpsArticles.length
+      countInSystem: localCps.length,
+      status: parsedEntities.cpsArticles.length === localCps.length
         ? (parsedEntities.cpsArticles.length === 0 ? 'empty_both' : 'matched')
-        : (parsedEntities.cpsArticles.length > state.cpsArticles.length ? 'sheet_has_more' : 'system_has_more')
+        : (parsedEntities.cpsArticles.length > localCps.length ? 'sheet_has_more' : 'system_has_more')
     },
     {
       entity: 'workers',
       label: 'بطاقات عمال البناء (Ouvriers)',
       countInSheet: parsedEntities.workers.length,
-      countInSystem: state.workers.length,
-      status: parsedEntities.workers.length === state.workers.length
+      countInSystem: localWorkers.length,
+      status: parsedEntities.workers.length === localWorkers.length
         ? (parsedEntities.workers.length === 0 ? 'empty_both' : 'matched')
-        : (parsedEntities.workers.length > state.workers.length ? 'sheet_has_more' : 'system_has_more')
+        : (parsedEntities.workers.length > localWorkers.length ? 'sheet_has_more' : 'system_has_more')
     },
     {
       entity: 'attendance',
       label: 'بوانطاج الحضور اليومي (Pointage)',
       countInSheet: parsedEntities.attendance.length,
-      countInSystem: state.attendance.length,
-      status: parsedEntities.attendance.length === state.attendance.length
+      countInSystem: localAttendance.length,
+      status: parsedEntities.attendance.length === localAttendance.length
         ? (parsedEntities.attendance.length === 0 ? 'empty_both' : 'matched')
-        : (parsedEntities.attendance.length > state.attendance.length ? 'sheet_has_more' : 'system_has_more')
+        : (parsedEntities.attendance.length > localAttendance.length ? 'sheet_has_more' : 'system_has_more')
     },
     {
       entity: 'purchases',
       label: 'مشتريات وبونات الموردين (Achats)',
       countInSheet: parsedEntities.purchases.length,
-      countInSystem: state.purchases.length,
-      status: parsedEntities.purchases.length === state.purchases.length
+      countInSystem: localPurchases.length,
+      status: parsedEntities.purchases.length === localPurchases.length
         ? (parsedEntities.purchases.length === 0 ? 'empty_both' : 'matched')
-        : (parsedEntities.purchases.length > state.purchases.length ? 'sheet_has_more' : 'system_has_more')
+        : (parsedEntities.purchases.length > localPurchases.length ? 'sheet_has_more' : 'system_has_more')
     },
     {
       entity: 'expenses',
       label: 'مصاريف الورش النثرية (Dépenses)',
       countInSheet: parsedEntities.expenses.length,
-      countInSystem: state.expenses.length,
-      status: parsedEntities.expenses.length === state.expenses.length
+      countInSystem: localExpenses.length,
+      status: parsedEntities.expenses.length === localExpenses.length
         ? (parsedEntities.expenses.length === 0 ? 'empty_both' : 'matched')
-        : (parsedEntities.expenses.length > state.expenses.length ? 'sheet_has_more' : 'system_has_more')
+        : (parsedEntities.expenses.length > localExpenses.length ? 'sheet_has_more' : 'system_has_more')
     },
     {
       entity: 'clientPayments',
       label: 'دفعات ووضعيات الزبناء (Décomptes)',
       countInSheet: parsedEntities.clientPayments.length,
-      countInSystem: state.clientPayments.length,
-      status: parsedEntities.clientPayments.length === state.clientPayments.length
+      countInSystem: localClientPayments.length,
+      status: parsedEntities.clientPayments.length === localClientPayments.length
         ? (parsedEntities.clientPayments.length === 0 ? 'empty_both' : 'matched')
-        : (parsedEntities.clientPayments.length > state.clientPayments.length ? 'sheet_has_more' : 'system_has_more')
+        : (parsedEntities.clientPayments.length > localClientPayments.length ? 'sheet_has_more' : 'system_has_more')
     }
   ];
 
@@ -1540,7 +1549,7 @@ export const auditMasterSheetBidirectional = async (
   });
 
   // Check contractor specific differences (e.g. ADM-3817-NX found in sheet but not in local state)
-  const missingAdmins = parsedEntities.admins.filter(sheetAdm => !state.adminAccounts.some(loc => loc.id.toUpperCase() === sheetAdm.id.toUpperCase()));
+  const missingAdmins = parsedEntities.admins.filter(sheetAdm => !localAdmins.some(loc => loc.id && sheetAdm.id && loc.id.toUpperCase() === sheetAdm.id.toUpperCase()));
   if (missingAdmins.length > 0) {
     diffs.push({
       id: 'missing_contractors_in_local',
@@ -1552,7 +1561,7 @@ export const auditMasterSheetBidirectional = async (
   }
 
   const hasDiscrepancies = diffs.length > 0;
-  const isFirstBrowserLoad = state.adminAccounts.length <= 1 && (!state.projects || state.projects.length === 0);
+  const isFirstBrowserLoad = localAdmins.length <= 1 && localProjects.length === 0;
 
   return {
     spreadsheetId,

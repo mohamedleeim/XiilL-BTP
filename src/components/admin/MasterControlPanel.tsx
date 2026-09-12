@@ -299,7 +299,7 @@ export const MasterControlPanel: React.FC<MasterControlPanelProps> = ({ onInspec
       if (report?.hasDiscrepancies) {
         setNotification({
           type: 'error',
-          text: `تم فحص الملف: تم رصد ${report.diffs.length} فروقات بين النظام والشيت (تفاصيلها معروضة بالنافذة).`
+          text: `تم فحص الملف: تم رصد ${report?.diffs?.length || 0} فروقات بين النظام والشيت (تفاصيلها معروضة بالنافذة).`
         });
       } else {
         setNotification({

@@ -11,7 +11,7 @@ export const SheetAuditAlertBanner: React.FC = () => {
   if (!auditReport || !auditReport.hasDiscrepancies) return null;
 
   const diffCount = auditReport.diffs?.length || 0;
-  const legacyCount = auditReport.legacySheetsFound?.length || 0;
+  const legacyCount = auditReport.legacyTabs?.length || 0;
 
   return (
     <div

@@ -3046,14 +3046,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // On startup or first browser load: if there are registered contractors in the sheet
       // who are not yet present in local state, auto-incorporate them into adminAccounts!
       // This immediately unblocks contractors (like ADM-3817-NX) so they can enter their PIN without hurdles.
-      if (report.fetchedData?.admins && report.fetchedData.admins.length > 0) {
+      if (report?.fetchedData?.admins && report.fetchedData.admins.length > 0) {
         setState(prev => {
           const currentList = prev.adminAccounts || [];
           let hasChanges = false;
           const merged = [...currentList];
 
           report.fetchedData!.admins.forEach(remoteAdmin => {
-            const existingIdx = merged.findIndex(a => a.id.toUpperCase() === remoteAdmin.id.toUpperCase());
+            const existingIdx = merged.findIndex(a => a.id && remoteAdmin.id && a.id.toUpperCase() === remoteAdmin.id.toUpperCase());
             if (existingIdx === -1) {
               merged.push(remoteAdmin);
               hasChanges = true;
@@ -3093,59 +3093,68 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { success: false, message: 'لا توجد بيانات مستوردة للتطبيق.' };
     }
 
-    const { admins, projects, workers, cpsArticles, attendance, purchases, expenses, clientPayments } = auditReport.fetchedData;
+    const {
+      admins = [],
+      projects = [],
+      workers = [],
+      cpsArticles = [],
+      attendance = [],
+      purchases = [],
+      expenses = [],
+      clientPayments = []
+    } = auditReport.fetchedData;
 
     setState(prev => {
-      const mergedAdmins = [...prev.adminAccounts];
+      const mergedAdmins = [...(prev.adminAccounts || [])];
       admins.forEach(item => {
-        const idx = mergedAdmins.findIndex(a => a.id.toUpperCase() === item.id.toUpperCase());
+        const idx = mergedAdmins.findIndex(a => a.id && item.id && a.id.toUpperCase() === item.id.toUpperCase());
         if (idx === -1) mergedAdmins.push(item);
         else mergedAdmins[idx] = { ...mergedAdmins[idx], ...item };
       });
 
-      const mergedProjects = [...prev.projects];
+      const mergedProjects = [...(prev.projects || [])];
       projects.forEach(item => {
         const idx = mergedProjects.findIndex(p => p.id === item.id);
         if (idx === -1) mergedProjects.push(item);
         else mergedProjects[idx] = { ...mergedProjects[idx], ...item };
       });
 
-      const mergedWorkers = [...prev.workers];
+      const mergedWorkers = [...(prev.workers || [])];
       workers.forEach(item => {
         const idx = mergedWorkers.findIndex(w => w.id === item.id);
         if (idx === -1) mergedWorkers.push(item);
         else mergedWorkers[idx] = { ...mergedWorkers[idx], ...item };
       });
 
-      const mergedCps = [...prev.cpsArticles];
+      const mergedCps = [...(prev.cpsArticles || [])];
       cpsArticles.forEach(item => {
         const idx = mergedCps.findIndex(c => c.id === item.id);
         if (idx === -1) mergedCps.push(item);
         else mergedCps[idx] = { ...mergedCps[idx], ...item };
       });
 
-      const mergedAttendance = [...prev.attendance];
+      const mergedAttendance = [...(prev.attendance || [])];
       attendance.forEach(item => {
         const idx = mergedAttendance.findIndex(a => a.id === item.id);
         if (idx === -1) mergedAttendance.push(item);
         else mergedAttendance[idx] = { ...mergedAttendance[idx], ...item };
       });
 
-      const mergedPurchases = [...prev.purchases];
+      const mergedPurchases = [...(prev.purchases || [])];
       purchases.forEach(item => {
         const idx = mergedPurchases.findIndex(p => p.id === item.id);
         if (idx === -1) mergedPurchases.push(item);
         else mergedPurchases[idx] = { ...mergedPurchases[idx], ...item };
       });
 
-      const mergedExpenses = [...prev.expenses];
+      const mergedExpenses = [...(prev.expenses || [])];
       expenses.forEach(item => {
         const idx = mergedExpenses.findIndex(e => e.id === item.id);
         if (idx === -1) mergedExpenses.push(item);
         else mergedExpenses[idx] = { ...mergedExpenses[idx], ...item };
       });
 
-      const mergedPayments = [...prev.clientPayments];
+      const mergedPayments = [...(prev.clientPayments || [])];
       clientPayments.forEach(item => {
         const idx = mergedPayments.findIndex(cp => cp.id === item.id);
         if (idx === -1) mergedPayments.push(item);
