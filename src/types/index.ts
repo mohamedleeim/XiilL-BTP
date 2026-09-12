@@ -203,6 +203,7 @@ export interface Attendance {
   projectId: string;
   status: AttendanceStatus;
   overtimeHours?: number;
+  advanceAmount?: number;
   notes?: string;
   isPaid?: boolean;
   createdAt: string;
@@ -436,4 +437,55 @@ export interface AppState {
   lang: 'ar' | 'fr';
   isOnline: boolean;
   lastSyncTime: string | null;
+}
+
+export interface SheetColumnComparison {
+  sheetTitle: string;
+  sheetLabel: string;
+  expectedHeaders: string[];
+  actualHeaders: string[];
+  missingHeaders: string[];
+  extraHeaders: string[];
+  hasAdminId: boolean;
+  status: 'perfect' | 'needs_update' | 'missing_tab';
+}
+
+export interface SheetEntityCountComparison {
+  entity: string;
+  label: string;
+  countInSheet: number;
+  countInSystem: number;
+  status: 'matched' | 'sheet_has_more' | 'system_has_more' | 'empty_both';
+}
+
+export interface SheetAuditDiff {
+  id: string;
+  direction: 'sheet_to_system' | 'system_to_sheet' | 'schema_structure';
+  title: string;
+  description: string;
+  severity: 'warning' | 'info' | 'danger';
+}
+
+export interface MasterSheetAuditReport {
+  spreadsheetId: string;
+  spreadsheetTitle?: string;
+  url: string;
+  timestamp: string;
+  columnsComparison: SheetColumnComparison[];
+  entityCounts: SheetEntityCountComparison[];
+  diffs: SheetAuditDiff[];
+  legacyTabs: string[];
+  hasDiscrepancies: boolean;
+  requiresReview: boolean;
+  isFirstBrowserLoad: boolean;
+  fetchedData?: {
+    admins: AdminAccount[];
+    projects: Project[];
+    workers: Worker[];
+    cpsArticles: CpsArticle[];
+    purchases: Purchase[];
+    expenses: Expense[];
+    clientPayments: ClientPayment[];
+    attendance: Attendance[];
+  };
 }

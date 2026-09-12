@@ -14,7 +14,23 @@ import {
   DriveFileItem, 
   ChatSpaceItem,
   SubscriptionInfo,
-  SubscriptionTier
+  SubscriptionTier,
+  MasterSheetAuditReport,
+  SheetColumnComparison,
+  SheetEntityCountComparison,
+  SheetAuditDiff,
+  Project,
+  Worker,
+  CpsArticle,
+  Attendance,
+  Purchase,
+  Expense,
+  ClientPayment,
+  ProjectStatus,
+  WorkerSpecialty,
+  MaterialUnit,
+  ExpenseCategory,
+  PaymentMethod
 } from '../types';
 import {
   formatTierLabel,
@@ -359,12 +375,15 @@ export interface BtpSheetDefinition {
 export const BTP_STANDARD_SHEETS: BtpSheetDefinition[] = [
   {
     title: 'Admin_Registry',
-    label: 'سجل الأدمين والاشتراكات',
+    label: 'سجل المقاولين والاشتراكات',
     description: 'Admin, Abonnements & Utilisateurs du Chantier',
     headers: [
       'Admin ID (كود الأدمين)',
       'Email (البريد)',
       'Name (الاسم)',
+      'Company (المقاولة)',
+      'Phone (الهاتف / WhatsApp)',
+      'PIN (رمز PIN السري)',
       'Role (الدور)',
       'Type Abonnement (نوع الباقة)',
       'Date Début (تاريخ بدأ الباقة)',
@@ -380,49 +399,135 @@ export const BTP_STANDARD_SHEETS: BtpSheetDefinition[] = [
     title: 'Chantiers_Projets',
     label: 'أوراش ومشاريع البناء',
     description: 'Chantiers, Marchés & Localisation',
-    headers: ['ID Chantier', 'Nom du Chantier', 'Maître d\'Ouvrage / Client', 'Téléphone', 'Ville', 'Budget Contractuel (MAD)', 'Date Début', 'Statut', 'Avancement %'],
+    headers: [
+      'ID Chantier',
+      'ID المقاول (Admin ID)',
+      'Nom du Chantier',
+      'Maître d\'Ouvrage / Client',
+      'Téléphone',
+      'Ville',
+      'Budget Contractuel (MAD)',
+      'Date Début',
+      'Statut',
+      'Avancement %',
+      'Notes / Description'
+    ],
     tabColor: { red: 0.2, green: 0.6, blue: 0.85 }
   },
   {
     title: 'Bordereau_CPS',
     label: 'بنود دفتر التحملات والأسعار',
     description: 'Bordereau des Prix & CPS (Attachements)',
-    headers: ['ID Article', 'ID Chantier', 'Lot BTP', 'N° Article', 'Désignation des Prestations & Travaux', 'Unité', 'Prix Unitaire (MAD)', 'Quantité Prévue', 'Montant Prévu (MAD)', 'Quantité Réalisée', 'Taux Réalisé %', 'Montant Exécuté (MAD)'],
+    headers: [
+      'ID Article',
+      'ID المقاول (Admin ID)',
+      'ID Chantier',
+      'Nom Chantier',
+      'Lot BTP',
+      'N° Article',
+      'Désignation des Prestations & Travaux',
+      'Unité',
+      'Prix Unitaire (MAD)',
+      'Quantité Prévue',
+      'Montant Prévu (MAD)',
+      'Quantité Réalisée',
+      'Taux Réalisé %',
+      'Montant Exécuté (MAD)'
+    ],
     tabColor: { red: 0.4, green: 0.7, blue: 0.3 }
   },
   {
     title: 'Pointage_Journalier',
-    label: 'بوانطاج العمال اليومي',
+    label: 'بوانطاج وحضور العمال اليومي',
     description: 'Pointage Quotidien des Équipes',
-    headers: ['Date', 'ID Chantier', 'Nom Chantier', 'ID Ouvrier', 'Nom Ouvrier', 'Statut Pointage', 'Heures Sup', 'Avances MAD', 'Notes'],
+    headers: [
+      'ID Pointage',
+      'ID المقاول (Admin ID)',
+      'Date',
+      'ID Chantier',
+      'Nom Chantier',
+      'ID Ouvrier',
+      'Nom Ouvrier',
+      'Statut Pointage',
+      'Heures Sup',
+      'Avances MAD',
+      'Notes'
+    ],
     tabColor: { red: 0.9, green: 0.4, blue: 0.2 }
   },
   {
     title: 'Paie_Ouvriers',
-    label: 'سجل أجور العمال',
+    label: 'سجل وبطاقات العمال والأجور',
     description: 'Salaires & Règlements Hebdomadaires/Mensuels',
-    headers: ['ID Ouvrier', 'Nom & Prénom', 'Spécialité / Métier', 'Type de Rémunération', 'Salaire de Base (MAD)', 'Téléphone', 'N° CIN', 'Statut'],
+    headers: [
+      'ID Ouvrier',
+      'ID المقاول (Admin ID)',
+      'Nom & Prénom',
+      'Spécialité / Métier',
+      'Type de Rémunération',
+      'Salaire de Base (MAD)',
+      'Téléphone',
+      'N° CIN',
+      'Statut'
+    ],
     tabColor: { red: 0.8, green: 0.3, blue: 0.7 }
   },
   {
     title: 'Achats_Fournisseurs',
     label: 'فواتير وبونات السلع والموردين',
     description: 'Bons de Livraison, Factures & Dettes Matériaux',
-    headers: ['ID Achat', 'Date', 'ID Fournisseur', 'ID Chantier', 'Désignation Matériaux', 'Quantité', 'Unité', 'Prix Unitaire (MAD)', 'Montant Total (MAD)', 'Montant Réglé (MAD)', 'Reste Dû / Créance (MAD)', 'N° BL / Facture'],
+    headers: [
+      'ID Achat',
+      'ID المقاول (Admin ID)',
+      'Date',
+      'ID Fournisseur',
+      'Nom Fournisseur',
+      'ID Chantier',
+      'Nom Chantier',
+      'Désignation Matériaux',
+      'Quantité',
+      'Unité',
+      'Prix Unitaire (MAD)',
+      'Montant Total (MAD)',
+      'Montant Réglé (MAD)',
+      'Reste Dû / Créance (MAD)',
+      'N° BL / Facture'
+    ],
     tabColor: { red: 0.95, green: 0.75, blue: 0.1 }
   },
   {
     title: 'Depenses_Chantier',
     label: 'مصاريف الورش النثرية واليومية',
     description: 'Petite Caisse, Carburant & Dépenses Diverses',
-    headers: ['ID Dépense', 'Date', 'Catégorie de Dépense', 'Montant (MAD)', 'ID Chantier', 'Mode de Règlement', 'Bénéficiaire', 'Observations'],
+    headers: [
+      'ID Dépense',
+      'ID المقاول (Admin ID)',
+      'Date',
+      'ID Chantier',
+      'Nom Chantier',
+      'Catégorie de Dépense',
+      'Montant (MAD)',
+      'Mode de Règlement',
+      'Bénéficiaire',
+      'Observations'
+    ],
     tabColor: { red: 0.85, green: 0.2, blue: 0.3 }
   },
   {
     title: 'Decomptes_Clients',
     label: 'دفعات ووضعيات الزبناء',
     description: 'Situations de Travaux & Encaissements Clients',
-    headers: ['ID Règlement', 'Date', 'ID Chantier', 'Tranche / Situation Décompte', 'Montant Reçu (MAD)', 'Mode de Paiement', 'N° Reçu / Chèque'],
+    headers: [
+      'ID Règlement',
+      'ID المقاول (Admin ID)',
+      'Date',
+      'ID Chantier',
+      'Nom Chantier',
+      'Tranche / Situation Décompte',
+      'Montant Reçu (MAD)',
+      'Mode de Paiement',
+      'N° Reçu / Chèque'
+    ],
     tabColor: { red: 0.2, green: 0.75, blue: 0.5 }
   }
 ];
@@ -683,6 +788,895 @@ export const inspectAndRepairSpreadsheet = async (
           : 'تعذر التحقق من محتوى الملف. يرجى التأكد من أن الرابط صحيح وأن الملف متاح لمن لديه الرابط (Tous les utilisateurs avec le lien).')
   };
 };
+
+/**
+ * Reads headers and data rows of any sheet tab, using Google Sheets API if token is present,
+ * or the public GViz JSON endpoint as zero-auth fallback.
+ */
+export const fetchSheetDataRows = async (
+  spreadsheetId: string,
+  sheetTitle: string
+): Promise<{ headers: string[]; rows: any[][]; error?: string }> => {
+  const token = getAccessToken();
+
+  if (token) {
+    try {
+      const res = await fetchWithRetry(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(sheetTitle)}!A1:Z3000`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const values: any[][] = data.values || [];
+        if (values.length > 0) {
+          const headers = (values[0] || []).map(h => String(h || '').trim());
+          const rows = values.slice(1);
+          return { headers, rows };
+        }
+        return { headers: [], rows: [] };
+      }
+    } catch (apiErr) {
+      console.warn(`API fetch for ${sheetTitle} failed, falling back to GViz:`, apiErr);
+    }
+  }
+
+  // Fallback to GViz (accessible without OAuth token)
+  try {
+    const url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheetTitle)}`;
+    const res = await fetch(url);
+    if (!res.ok) return { headers: [], rows: [], error: `HTTP ${res.status}` };
+    const text = await res.text();
+    const match = text.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\);/);
+    if (!match || !match[1]) return { headers: [], rows: [], error: 'Invalid GViz format' };
+    const data = JSON.parse(match[1]);
+    if (data.status !== 'ok') {
+      return { headers: [], rows: [], error: data.errors?.[0]?.message || 'Sheet tab not accessible' };
+    }
+
+    const rawCols = (data.table.cols || []).map((c: any) => (c.label || c.id || '').trim());
+    const gvizRows = data.table.rows || [];
+    const hasMeaningfulLabels = rawCols.some((c: string) => c && !/^[A-Z]$/.test(c));
+
+    if (hasMeaningfulLabels) {
+      const headers = rawCols;
+      const rows = gvizRows.map((r: any) =>
+        (r.c || []).map((cell: any) => (cell ? (cell.v !== null && cell.v !== undefined ? cell.v : cell.f || '') : ''))
+      );
+      return { headers, rows };
+    } else if (gvizRows.length > 0) {
+      const headers = (gvizRows[0].c || []).map((cell: any) =>
+        cell ? String(cell.v !== null && cell.v !== undefined ? cell.v : cell.f || '').trim() : ''
+      );
+      const rows = gvizRows.slice(1).map((r: any) =>
+        (r.c || []).map((cell: any) => (cell ? (cell.v !== null && cell.v !== undefined ? cell.v : cell.f || '') : ''))
+      );
+      return { headers, rows };
+    }
+    return { headers: rawCols, rows: [] };
+  } catch (err: any) {
+    return { headers: [], rows: [], error: err.message };
+  }
+};
+
+/**
+ * Parser that translates raw sheet tables into domain model records
+ */
+export const parseAllOperationalDataFromRows = (
+  sheetDataMap: Record<string, { headers: string[]; rows: any[][] }>
+): {
+  admins: AdminAccount[];
+  projects: Project[];
+  workers: Worker[];
+  cpsArticles: CpsArticle[];
+  attendance: Attendance[];
+  purchases: Purchase[];
+  expenses: Expense[];
+  clientPayments: ClientPayment[];
+} => {
+  const result = {
+    admins: [] as AdminAccount[],
+    projects: [] as Project[],
+    workers: [] as Worker[],
+    cpsArticles: [] as CpsArticle[],
+    attendance: [] as Attendance[],
+    purchases: [] as Purchase[],
+    expenses: [] as Expense[],
+    clientPayments: [] as ClientPayment[]
+  };
+
+  // 1. Admin_Registry
+  const adminData = sheetDataMap['Admin_Registry'];
+  if (adminData && adminData.rows.length > 0) {
+    const h = adminData.headers.map(x => x.toLowerCase());
+    const idIdx = h.findIndex(x => x.includes('admin id') || x.includes('كود'));
+    const emailIdx = h.findIndex(x => x.includes('email') || x.includes('بريد'));
+    const nameIdx = h.findIndex(x => x.includes('name') || x.includes('الاسم'));
+    const compIdx = h.findIndex(x => x.includes('company') || x.includes('مقاولة'));
+    const phoneIdx = h.findIndex(x => x.includes('phone') || x.includes('هاتف'));
+    const pinIdx = h.findIndex(x => x.includes('pin') || x.includes('رمز'));
+    const roleIdx = h.findIndex(x => x.includes('role') || x.includes('الدور'));
+    const tierIdx = h.findIndex(x => x.includes('type') || x.includes('باقة') || x.includes('اشتراك'));
+    const startIdx = h.findIndex(x => x.includes('début') || x.includes('بدأ'));
+    const endIdx = h.findIndex(x => x.includes('fin') || x.includes('إنتهاء'));
+    const statusIdx = h.findIndex(x => x.includes('status') || x.includes('الحالة'));
+    const createdIdx = h.findIndex(x => x.includes('created') || x.includes('تسجيل'));
+    const notesIdx = h.findIndex(x => x.includes('note') || x.includes('ملاحظ'));
+
+    adminData.rows.forEach(r => {
+      const id = String(r[idIdx !== -1 ? idIdx : 0] || '').trim();
+      if (!id || id === 'ID' || id.toLowerCase().includes('admin id')) return;
+      const email = String(r[emailIdx !== -1 ? emailIdx : 1] || '').trim().toLowerCase() || `${id.toLowerCase()}@xiill.com`;
+      const name = String(r[nameIdx !== -1 ? nameIdx : 2] || '').trim() || id;
+      const companyName = compIdx !== -1 && r[compIdx] ? String(r[compIdx]).trim() : name;
+      const phone = phoneIdx !== -1 && r[phoneIdx] ? String(r[phoneIdx]).trim() : '';
+      const pin = pinIdx !== -1 && r[pinIdx] ? String(r[pinIdx]).trim() : '1234';
+      const roleStr = roleIdx !== -1 && r[roleIdx] ? String(r[roleIdx]).trim().toLowerCase() : 'admin';
+      const role = roleStr === 'super_admin' ? 'super_admin' : 'admin';
+
+      const tierStr = tierIdx !== -1 ? r[tierIdx] : '';
+      const tier = parseTierLabel(tierStr);
+      const startDate = startIdx !== -1 && r[startIdx] ? safeIsoDate(r[startIdx], new Date().toISOString()) : new Date().toISOString();
+      const endDate = endIdx !== -1 && r[endIdx] ? safeIsoDate(r[endIdx], new Date(Date.now() + 30 * 86400000).toISOString()) : new Date(Date.now() + 30 * 86400000).toISOString();
+      const rawStatus = statusIdx !== -1 && r[statusIdx] ? String(r[statusIdx]).trim() : 'active';
+      const createdAt = createdIdx !== -1 && r[createdIdx] ? safeIsoDate(r[createdIdx], startDate) : startDate;
+      const notes = notesIdx !== -1 && r[notesIdx] ? String(r[notesIdx]).trim() : '';
+
+      const sub: SubscriptionInfo = {
+        tier,
+        startDate,
+        endDate,
+        status: 'active',
+        price: tier === 'annual' ? 2610 : tier === 'monthly' ? 290 : 0
+      };
+      const autoStatus = computeAutoStatus(sub, rawStatus);
+
+      result.admins.push({
+        id,
+        email,
+        name,
+        companyName,
+        phone,
+        pin,
+        role,
+        status: autoStatus,
+        subscription: sub,
+        createdAt,
+        notes
+      });
+    });
+  }
+
+  // 2. Chantiers_Projets
+  const projData = sheetDataMap['Chantiers_Projets'];
+  if (projData && projData.rows.length > 0) {
+    const h = projData.headers.map(x => x.toLowerCase());
+    const idIdx = h.findIndex(x => x.includes('id chant') || x === 'id');
+    const adminIdx = h.findIndex(x => x.includes('admin') || x.includes('مقاول'));
+    const nameIdx = h.findIndex(x => x.includes('nom') || x.includes('اسم'));
+    const clientIdx = h.findIndex(x => x.includes('maître') || x.includes('client') || x.includes('زبون'));
+    const phoneIdx = h.findIndex(x => x.includes('téléphone') || x.includes('هاتف'));
+    const cityIdx = h.findIndex(x => x.includes('ville') || x.includes('مدينة'));
+    const budgetIdx = h.findIndex(x => x.includes('budget') || x.includes('ميزانية'));
+    const dateIdx = h.findIndex(x => x.includes('date') || x.includes('تاريخ'));
+    const statusIdx = h.findIndex(x => x.includes('statut') || x.includes('حالة'));
+    const progressIdx = h.findIndex(x => x.includes('avancement') || x.includes('نسبة'));
+
+    projData.rows.forEach(r => {
+      const id = String(r[idIdx !== -1 ? idIdx : 0] || '').trim();
+      const name = String(r[nameIdx !== -1 ? nameIdx : 2] || r[1] || '').trim();
+      if (!id || !name || id.toLowerCase().includes('chantier')) return;
+
+      const adminId = adminIdx !== -1 && r[adminIdx] ? String(r[adminIdx]).trim() : undefined;
+      const clientName = clientIdx !== -1 && r[clientIdx] ? String(r[clientIdx]).trim() : '';
+      const clientPhone = phoneIdx !== -1 && r[phoneIdx] ? String(r[phoneIdx]).trim() : '';
+      const locationCity = cityIdx !== -1 && r[cityIdx] ? String(r[cityIdx]).trim() : '';
+      const budget = budgetIdx !== -1 ? parseFloat(String(r[budgetIdx] || 0).replace(/[^0-9.]/g, '')) || 0 : 0;
+      const startDate = dateIdx !== -1 && r[dateIdx] ? safeIsoDate(r[dateIdx], new Date().toISOString()) : new Date().toISOString();
+      const rawStatus = statusIdx !== -1 && r[statusIdx] ? String(r[statusIdx]).trim().toLowerCase() : 'active';
+      const status: ProjectStatus = (rawStatus.includes('clos') || rawStatus.includes('منتهي')) ? 'completed' : 'active';
+      const progressRaw = progressIdx !== -1 ? String(r[progressIdx] || 0) : '0';
+      const progressPct = parseFloat(progressRaw.replace(/[^0-9.]/g, '')) || 0;
+
+      result.projects.push({
+        id,
+        adminId,
+        name,
+        clientName,
+        clientPhone,
+        locationCity,
+        budget,
+        startDate,
+        status,
+        progressPct,
+        assignedSupervisorIds: [],
+        createdAt: startDate,
+        updatedAt: new Date().toISOString()
+      });
+    });
+  }
+
+  // 3. Bordereau_CPS
+  const cpsData = sheetDataMap['Bordereau_CPS'];
+  if (cpsData && cpsData.rows.length > 0) {
+    const h = cpsData.headers.map(x => x.toLowerCase());
+    const idIdx = h.findIndex(x => x.includes('id art') || x === 'id');
+    const adminIdx = h.findIndex(x => x.includes('admin') || x.includes('مقاول'));
+    const projIdx = h.findIndex(x => x.includes('chantier') || x.includes('ورش'));
+    const lotIdx = h.findIndex(x => x.includes('lot'));
+    const numIdx = h.findIndex(x => x.includes('n°') || x.includes('رقم'));
+    const desIdx = h.findIndex(x => x.includes('désign') || x.includes('بيان'));
+    const unitIdx = h.findIndex(x => x.includes('unité') || x.includes('وحدة'));
+    const puIdx = h.findIndex(x => x.includes('unitaire') || x.includes('سعر'));
+    const qtePlanIdx = h.findIndex(x => x.includes('prévue') || x.includes('مبرمج'));
+    const qteExecIdx = h.findIndex(x => x.includes('réalisée') || x.includes('منجز'));
+
+    cpsData.rows.forEach(r => {
+      const id = String(r[idIdx !== -1 ? idIdx : 0] || '').trim();
+      const designation = String(r[desIdx !== -1 ? desIdx : 4] || '').trim();
+      if (!id || !designation || id.toLowerCase().includes('article')) return;
+
+      const adminId = adminIdx !== -1 && r[adminIdx] ? String(r[adminIdx]).trim() : undefined;
+      const projectId = projIdx !== -1 && r[projIdx] ? String(r[projIdx]).trim() : '';
+      const lot = lotIdx !== -1 && r[lotIdx] ? String(r[lotIdx]).trim() : 'Gros Œuvres';
+      const articleNumber = numIdx !== -1 && r[numIdx] ? String(r[numIdx]).trim() : id;
+      const unit = unitIdx !== -1 && r[unitIdx] ? String(r[unitIdx]).trim() : 'U';
+      const unitPrice = puIdx !== -1 ? parseFloat(String(r[puIdx] || 0).replace(/[^0-9.]/g, '')) || 0 : 0;
+      const quantityPlanned = qtePlanIdx !== -1 ? parseFloat(String(r[qtePlanIdx] || 0).replace(/[^0-9.]/g, '')) || 0 : 0;
+      const quantityExecuted = qteExecIdx !== -1 ? parseFloat(String(r[qteExecIdx] || 0).replace(/[^0-9.]/g, '')) || 0 : 0;
+      const totalPlannedPrice = unitPrice * quantityPlanned;
+      const executedAmount = unitPrice * quantityExecuted;
+      const progressPct = quantityPlanned > 0 ? Math.min(100, Math.round((quantityExecuted / quantityPlanned) * 100)) : 0;
+
+      result.cpsArticles.push({
+        id,
+        adminId,
+        projectId,
+        lot,
+        articleNumber,
+        designation,
+        unit,
+        unitPrice,
+        quantityPlanned,
+        totalPlannedPrice,
+        quantityExecuted,
+        executedAmount,
+        progressPct,
+        status: 'in_progress',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      });
+    });
+  }
+
+  // 4. Paie_Ouvriers
+  const workerData = sheetDataMap['Paie_Ouvriers'];
+  if (workerData && workerData.rows.length > 0) {
+    const h = workerData.headers.map(x => x.toLowerCase());
+    const idIdx = h.findIndex(x => x.includes('id ouvr') || x === 'id');
+    const adminIdx = h.findIndex(x => x.includes('admin') || x.includes('مقاول'));
+    const nameIdx = h.findIndex(x => x.includes('nom') || x.includes('اسم'));
+    const specIdx = h.findIndex(x => x.includes('spécialité') || x.includes('métier') || x.includes('مهنة') || x.includes('حرفة'));
+    const wageTypeIdx = h.findIndex(x => x.includes('type') || x.includes('نوع'));
+    const wageIdx = h.findIndex(x => x.includes('salaire') || x.includes('base') || x.includes('راتب') || x.includes('أجر'));
+    const phoneIdx = h.findIndex(x => x.includes('téléphone') || x.includes('هاتف'));
+    const cinIdx = h.findIndex(x => x.includes('cin') || x.includes('بطاقة'));
+    const statusIdx = h.findIndex(x => x.includes('statut') || x.includes('حالة'));
+
+    workerData.rows.forEach(r => {
+      const id = String(r[idIdx !== -1 ? idIdx : 0] || '').trim();
+      const name = String(r[nameIdx !== -1 ? nameIdx : 2] || r[1] || '').trim();
+      if (!id || !name || id.toLowerCase().includes('ouvrier')) return;
+
+      const adminId = adminIdx !== -1 && r[adminIdx] ? String(r[adminIdx]).trim() : undefined;
+      const specialty = specIdx !== -1 && r[specIdx] ? String(r[specIdx]).trim() : 'بناء';
+      const wageTypeStr = wageTypeIdx !== -1 && r[wageTypeIdx] ? String(r[wageTypeIdx]).trim().toLowerCase() : 'daily';
+      const wageType = wageTypeStr.includes('mensuel') || wageTypeStr.includes('شهري') ? 'monthly' : 'daily';
+      const wageAmount = wageIdx !== -1 ? parseFloat(String(r[wageIdx] || 0).replace(/[^0-9.]/g, '')) || 0 : 0;
+      const phone = phoneIdx !== -1 && r[phoneIdx] ? String(r[phoneIdx]).trim() : '';
+      const cin = cinIdx !== -1 && r[cinIdx] ? String(r[cinIdx]).trim() : '';
+      const rawStatus = statusIdx !== -1 && r[statusIdx] ? String(r[statusIdx]).trim().toLowerCase() : 'actif';
+      const active = !rawStatus.includes('inactif') && !rawStatus.includes('معطل');
+
+      result.workers.push({
+        id,
+        adminId,
+        name,
+        specialty: specialty as WorkerSpecialty,
+        wageType,
+        wageAmount,
+        phone,
+        cin,
+        active,
+        projectIds: [],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      });
+    });
+  }
+
+  // 5. Pointage_Journalier
+  const pointageData = sheetDataMap['Pointage_Journalier'];
+  if (pointageData && pointageData.rows.length > 0) {
+    const h = pointageData.headers.map(x => x.toLowerCase());
+    const idIdx = h.findIndex(x => x.includes('id point') || x === 'id');
+    const adminIdx = h.findIndex(x => x.includes('admin') || x.includes('مقاول'));
+    const dateIdx = h.findIndex(x => x.includes('date') || x.includes('تاريخ'));
+    const projIdx = h.findIndex(x => x.includes('id chant') || x.includes('chantier') || x.includes('ورش'));
+    const workerIdx = h.findIndex(x => x.includes('id ouvr') || x.includes('ouvrier') || x.includes('عامل'));
+    const statusIdx = h.findIndex(x => x.includes('statut') || x.includes('حالة'));
+    const otIdx = h.findIndex(x => x.includes('sup') || x.includes('إضاف'));
+    const advIdx = h.findIndex(x => x.includes('avance') || x.includes('تسبيق'));
+    const noteIdx = h.findIndex(x => x.includes('note') || x.includes('ملاحظ'));
+
+    pointageData.rows.forEach(r => {
+      const date = dateIdx !== -1 && r[dateIdx] ? safeIsoDate(r[dateIdx], '') : '';
+      const workerId = workerIdx !== -1 && r[workerIdx] ? String(r[workerIdx]).trim() : '';
+      if (!date || !workerId || date.toLowerCase().includes('date')) return;
+
+      const id = idIdx !== -1 && r[idIdx] ? String(r[idIdx]).trim() : `PTG-${date}-${workerId}`;
+      const adminId = adminIdx !== -1 && r[adminIdx] ? String(r[adminIdx]).trim() : undefined;
+      const projectId = projIdx !== -1 && r[projIdx] ? String(r[projIdx]).trim() : '';
+      const statusRaw = statusIdx !== -1 && r[statusIdx] ? String(r[statusIdx]).trim().toLowerCase() : 'present';
+      const status = statusRaw.includes('absent') || statusRaw.includes('غائب') ? 'absent' : (statusRaw.includes('half') || statusRaw.includes('نصف') ? 'half_day' : 'present');
+      const overtimeHours = otIdx !== -1 ? parseFloat(String(r[otIdx] || 0).replace(/[^0-9.]/g, '')) || 0 : 0;
+      const advanceAmount = advIdx !== -1 ? parseFloat(String(r[advIdx] || 0).replace(/[^0-9.]/g, '')) || 0 : 0;
+      const notes = noteIdx !== -1 && r[noteIdx] ? String(r[noteIdx]).trim() : '';
+
+      result.attendance.push({
+        id,
+        adminId,
+        date,
+        projectId,
+        workerId,
+        status: status as any,
+        overtimeHours,
+        advanceAmount,
+        notes,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      });
+    });
+  }
+
+  // 6. Achats_Fournisseurs
+  const achanData = sheetDataMap['Achats_Fournisseurs'];
+  if (achanData && achanData.rows.length > 0) {
+    const h = achanData.headers.map(x => x.toLowerCase());
+    const idIdx = h.findIndex(x => x.includes('id ach') || x === 'id');
+    const adminIdx = h.findIndex(x => x.includes('admin') || x.includes('مقاول'));
+    const dateIdx = h.findIndex(x => x.includes('date') || x.includes('تاريخ'));
+    const suppIdx = h.findIndex(x => x.includes('fournisseur') || x.includes('مورد'));
+    const projIdx = h.findIndex(x => x.includes('chantier') || x.includes('ورش'));
+    const matIdx = h.findIndex(x => x.includes('désign') || x.includes('matér') || x.includes('سلعة') || x.includes('مادة'));
+    const qteIdx = h.findIndex(x => x.includes('quant') || x.includes('كمية'));
+    const unitIdx = h.findIndex(x => x.includes('unité') || x.includes('وحدة'));
+    const puIdx = h.findIndex(x => x.includes('unitaire') || x.includes('سعر'));
+    const totalIdx = h.findIndex(x => x.includes('total') || x.includes('مجموع'));
+    const paidIdx = h.findIndex(x => x.includes('réglé') || x.includes('مؤدى'));
+    const debtIdx = h.findIndex(x => x.includes('dû') || x.includes('باقي') || x.includes('دين'));
+    const blIdx = h.findIndex(x => x.includes('bl') || x.includes('facture') || x.includes('وصل') || x.includes('فاتورة'));
+
+    achanData.rows.forEach(r => {
+      const id = String(r[idIdx !== -1 ? idIdx : 0] || '').trim();
+      const materialName = String(r[matIdx !== -1 ? matIdx : 4] || '').trim();
+      if (!id || !materialName || id.toLowerCase().includes('achat')) return;
+
+      const adminId = adminIdx !== -1 && r[adminIdx] ? String(r[adminIdx]).trim() : undefined;
+      const date = dateIdx !== -1 && r[dateIdx] ? safeIsoDate(r[dateIdx], new Date().toISOString()) : new Date().toISOString();
+      const supplierId = suppIdx !== -1 && r[suppIdx] ? String(r[suppIdx]).trim() : 'SUPP-01';
+      const projectId = projIdx !== -1 && r[projIdx] ? String(r[projIdx]).trim() : '';
+      const quantity = qteIdx !== -1 ? parseFloat(String(r[qteIdx] || 0).replace(/[^0-9.]/g, '')) || 0 : 0;
+      const unit = unitIdx !== -1 && r[unitIdx] ? String(r[unitIdx]).trim() : 'U';
+      const unitPrice = puIdx !== -1 ? parseFloat(String(r[puIdx] || 0).replace(/[^0-9.]/g, '')) || 0 : 0;
+      const totalAmount = totalIdx !== -1 ? parseFloat(String(r[totalIdx] || 0).replace(/[^0-9.]/g, '')) || (quantity * unitPrice) : (quantity * unitPrice);
+      const paidAmount = paidIdx !== -1 ? parseFloat(String(r[paidIdx] || 0).replace(/[^0-9.]/g, '')) || 0 : 0;
+      const remainingDebt = debtIdx !== -1 ? parseFloat(String(r[debtIdx] || 0).replace(/[^0-9.]/g, '')) || Math.max(0, totalAmount - paidAmount) : Math.max(0, totalAmount - paidAmount);
+      const invoiceNumber = blIdx !== -1 && r[blIdx] ? String(r[blIdx]).trim() : '';
+
+      result.purchases.push({
+        id,
+        adminId,
+        date,
+        supplierId,
+        projectId,
+        materialName,
+        quantity,
+        unit: unit as MaterialUnit,
+        unitPrice,
+        totalAmount,
+        paidAmount,
+        remainingDebt,
+        invoiceNumber,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      });
+    });
+  }
+
+  // 7. Depenses_Chantier
+  const expData = sheetDataMap['Depenses_Chantier'];
+  if (expData && expData.rows.length > 0) {
+    const h = expData.headers.map(x => x.toLowerCase());
+    const idIdx = h.findIndex(x => x.includes('id dép') || x === 'id');
+    const adminIdx = h.findIndex(x => x.includes('admin') || x.includes('مقاول'));
+    const dateIdx = h.findIndex(x => x.includes('date') || x.includes('تاريخ'));
+    const catIdx = h.findIndex(x => x.includes('catégorie') || x.includes('صنف'));
+    const amountIdx = h.findIndex(x => x.includes('montant') || x.includes('مبلغ'));
+    const projIdx = h.findIndex(x => x.includes('chantier') || x.includes('ورش'));
+    const modeIdx = h.findIndex(x => x.includes('mode') || x.includes('طريقة'));
+    const recIdx = h.findIndex(x => x.includes('bénéficiaire') || x.includes('مستفيد'));
+    const obsIdx = h.findIndex(x => x.includes('obs') || x.includes('ملاحظ'));
+
+    expData.rows.forEach(r => {
+      const id = String(r[idIdx !== -1 ? idIdx : 0] || '').trim();
+      const amount = amountIdx !== -1 ? parseFloat(String(r[amountIdx] || 0).replace(/[^0-9.]/g, '')) || 0 : 0;
+      if (!id || amount <= 0 || id.toLowerCase().includes('dépense')) return;
+
+      const adminId = adminIdx !== -1 && r[adminIdx] ? String(r[adminIdx]).trim() : undefined;
+      const date = dateIdx !== -1 && r[dateIdx] ? safeIsoDate(r[dateIdx], new Date().toISOString()) : new Date().toISOString();
+      const category = catIdx !== -1 && r[catIdx] ? String(r[catIdx]).trim() : 'أخرى';
+      const projectId = projIdx !== -1 && r[projIdx] ? String(r[projIdx]).trim() : '';
+      const paymentMethod = modeIdx !== -1 && r[modeIdx] ? String(r[modeIdx]).trim() : 'كاش (Espèces)';
+      const recipientName = recIdx !== -1 && r[recIdx] ? String(r[recIdx]).trim() : '';
+      const notes = obsIdx !== -1 && r[obsIdx] ? String(r[obsIdx]).trim() : '';
+
+      result.expenses.push({
+        id,
+        adminId,
+        date,
+        category: category as ExpenseCategory,
+        amount,
+        projectId,
+        paymentMethod: paymentMethod as PaymentMethod,
+        recipientName,
+        notes,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      });
+    });
+  }
+
+  // 8. Decomptes_Clients
+  const clientData = sheetDataMap['Decomptes_Clients'];
+  if (clientData && clientData.rows.length > 0) {
+    const h = clientData.headers.map(x => x.toLowerCase());
+    const idIdx = h.findIndex(x => x.includes('id règ') || x === 'id');
+    const adminIdx = h.findIndex(x => x.includes('admin') || x.includes('مقاول'));
+    const dateIdx = h.findIndex(x => x.includes('date') || x.includes('تاريخ'));
+    const projIdx = h.findIndex(x => x.includes('chantier') || x.includes('ورش'));
+    const trancheIdx = h.findIndex(x => x.includes('tranche') || x.includes('situation') || x.includes('دفعة') || x.includes('وضعية'));
+    const amountIdx = h.findIndex(x => x.includes('montant') || x.includes('مبلغ'));
+    const modeIdx = h.findIndex(x => x.includes('mode') || x.includes('طريقة'));
+    const numIdx = h.findIndex(x => x.includes('reçu') || x.includes('chèque') || x.includes('وصل') || x.includes('شيك'));
+
+    clientData.rows.forEach(r => {
+      const id = String(r[idIdx !== -1 ? idIdx : 0] || '').trim();
+      const amount = amountIdx !== -1 ? parseFloat(String(r[amountIdx] || 0).replace(/[^0-9.]/g, '')) || 0 : 0;
+      if (!id || amount <= 0 || id.toLowerCase().includes('règlement')) return;
+
+      const adminId = adminIdx !== -1 && r[adminIdx] ? String(r[adminIdx]).trim() : undefined;
+      const date = dateIdx !== -1 && r[dateIdx] ? safeIsoDate(r[dateIdx], new Date().toISOString()) : new Date().toISOString();
+      const projectId = projIdx !== -1 && r[projIdx] ? String(r[projIdx]).trim() : '';
+      const milestoneTitle = trancheIdx !== -1 && r[trancheIdx] ? String(r[trancheIdx]).trim() : 'Décompte';
+      const paymentMethod = modeIdx !== -1 && r[modeIdx] ? String(r[modeIdx]).trim() : 'تحويل بنكي (Virement)';
+      const receiptNumber = numIdx !== -1 && r[numIdx] ? String(r[numIdx]).trim() : '';
+
+      result.clientPayments.push({
+        id,
+        adminId,
+        date,
+        projectId,
+        milestoneTitle,
+        amount,
+        paymentMethod: paymentMethod as PaymentMethod,
+        receiptNumber,
+        createdAt: new Date().toISOString()
+      });
+    });
+  }
+
+  return result;
+};
+
+/**
+ * Bidirectional Schema & Data Audit between System and Central Google Sheet
+ * Performs structural verification, column header check, and data volume comparison.
+ */
+export const auditMasterSheetBidirectional = async (
+  spreadsheetId: string,
+  state: AppState
+): Promise<MasterSheetAuditReport> => {
+  const token = getAccessToken();
+  const url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
+  const timestamp = new Date().toISOString();
+
+  // 1. Fetch metadata & sheet tabs list
+  let sheetTitlesInDrive: string[] = [];
+  let spreadsheetTitle = 'XiilL BTP — المنظومة المركزية للأوراش';
+
+  if (token) {
+    try {
+      const metaRes = await fetchWithRetry(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=properties.title,sheets.properties(sheetId,title,index)`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (metaRes.ok) {
+        const meta = await metaRes.json();
+        spreadsheetTitle = meta.properties?.title || spreadsheetTitle;
+        sheetTitlesInDrive = (meta.sheets || []).map((s: any) => s.properties.title as string);
+      }
+    } catch (e) {
+      console.warn('API fetch spreadsheet metadata failed:', e);
+    }
+  }
+
+  // Probe legacy tabs
+  const legacyTabs: string[] = [];
+  if (sheetTitlesInDrive.length > 0) {
+    sheetTitlesInDrive.forEach(t => {
+      const isStandard = BTP_STANDARD_SHEETS.some(s => s.title.toLowerCase().trim() === t.toLowerCase().trim());
+      if (!isStandard) {
+        legacyTabs.push(t);
+      }
+    });
+  } else {
+    // Probing known legacy tabs via GViz
+    const knownAdmins = state.adminAccounts || [];
+    for (const a of knownAdmins) {
+      const legacyTitle = `مقاول_${a.id}`;
+      try {
+        const check = await fetchSheetDataRows(spreadsheetId, legacyTitle);
+        if (check.headers.length > 0 || check.rows.length > 0) {
+          legacyTabs.push(legacyTitle);
+        }
+      } catch {}
+    }
+  }
+
+  // 2. Fetch and compare columns for each of the 8 standard sheets
+  const columnsComparison: SheetColumnComparison[] = [];
+  const fetchedSheetData: Record<string, { headers: string[]; rows: any[][] }> = {};
+
+  for (const def of BTP_STANDARD_SHEETS) {
+    const data = await fetchSheetDataRows(spreadsheetId, def.title);
+    fetchedSheetData[def.title] = data;
+
+    const actualHeaders = data.headers;
+    const isTabMissing = actualHeaders.length === 0 && Boolean(data.error);
+
+    const normalizeH = (s: string) => s.toLowerCase().replace(/[\(\)\/\-_]/g, ' ').replace(/\s+/g, ' ').trim();
+
+    // Check if sheet has Admin ID
+    const hasAdminId = def.title === 'Admin_Registry'
+      ? actualHeaders.some(h => /admin\s*id|كود\s*الأدمين|كود\s*المقاول/i.test(h))
+      : actualHeaders.some(h => /admin\s*id|كود\s*المقاول|id\s*المقاول|معرف\s*المقاول/i.test(h));
+
+    const missingHeaders: string[] = [];
+    const extraHeaders: string[] = [];
+
+    if (!isTabMissing) {
+      def.headers.forEach(exp => {
+        const normExp = normalizeH(exp);
+        const match = actualHeaders.some(act => {
+          const normAct = normalizeH(act);
+          return normAct.includes(normExp) || normExp.includes(normAct) ||
+            (normExp.includes('admin id') && (normAct.includes('كود') || normAct.includes('admin'))) ||
+            (normExp.includes('مقاول') && normAct.includes('مقاول'));
+        });
+        if (!match) {
+          missingHeaders.push(exp);
+        }
+      });
+
+      actualHeaders.forEach(act => {
+        const normAct = normalizeH(act);
+        const match = def.headers.some(exp => {
+          const normExp = normalizeH(exp);
+          return normAct.includes(normExp) || normExp.includes(normAct) ||
+            (normAct.includes('كود') && normExp.includes('admin id'));
+        });
+        if (!match && !['a', 'b', 'c', 'd', 'e'].includes(normAct)) {
+          extraHeaders.push(act);
+        }
+      });
+    }
+
+    let status: 'perfect' | 'needs_update' | 'missing_tab' = 'perfect';
+    if (isTabMissing) {
+      status = 'missing_tab';
+    } else if (missingHeaders.length > 0 || !hasAdminId || extraHeaders.some(h => /sheet\s*id|رابط\s*الشيت/i.test(h))) {
+      status = 'needs_update';
+    }
+
+    columnsComparison.push({
+      sheetTitle: def.title,
+      sheetLabel: def.label,
+      expectedHeaders: def.headers,
+      actualHeaders,
+      missingHeaders,
+      extraHeaders,
+      hasAdminId,
+      status
+    });
+  }
+
+  // 3. Parse and count records in each sheet vs System
+  const parsedEntities = parseAllOperationalDataFromRows(fetchedSheetData);
+
+  const entityCounts: SheetEntityCountComparison[] = [
+    {
+      entity: 'adminAccounts',
+      label: 'المقاولون المسجلون (Admins)',
+      countInSheet: parsedEntities.admins.length,
+      countInSystem: state.adminAccounts.length,
+      status: parsedEntities.admins.length === state.adminAccounts.length
+        ? (parsedEntities.admins.length === 0 ? 'empty_both' : 'matched')
+        : (parsedEntities.admins.length > state.adminAccounts.length ? 'sheet_has_more' : 'system_has_more')
+    },
+    {
+      entity: 'projects',
+      label: 'أوراش ومشاريع البناء (Chantiers)',
+      countInSheet: parsedEntities.projects.length,
+      countInSystem: state.projects.length,
+      status: parsedEntities.projects.length === state.projects.length
+        ? (parsedEntities.projects.length === 0 ? 'empty_both' : 'matched')
+        : (parsedEntities.projects.length > state.projects.length ? 'sheet_has_more' : 'system_has_more')
+    },
+    {
+      entity: 'cpsArticles',
+      label: 'بنود دفتر التحملات (Bordereau CPS)',
+      countInSheet: parsedEntities.cpsArticles.length,
+      countInSystem: state.cpsArticles.length,
+      status: parsedEntities.cpsArticles.length === state.cpsArticles.length
+        ? (parsedEntities.cpsArticles.length === 0 ? 'empty_both' : 'matched')
+        : (parsedEntities.cpsArticles.length > state.cpsArticles.length ? 'sheet_has_more' : 'system_has_more')
+    },
+    {
+      entity: 'workers',
+      label: 'بطاقات عمال البناء (Ouvriers)',
+      countInSheet: parsedEntities.workers.length,
+      countInSystem: state.workers.length,
+      status: parsedEntities.workers.length === state.workers.length
+        ? (parsedEntities.workers.length === 0 ? 'empty_both' : 'matched')
+        : (parsedEntities.workers.length > state.workers.length ? 'sheet_has_more' : 'system_has_more')
+    },
+    {
+      entity: 'attendance',
+      label: 'بوانطاج الحضور اليومي (Pointage)',
+      countInSheet: parsedEntities.attendance.length,
+      countInSystem: state.attendance.length,
+      status: parsedEntities.attendance.length === state.attendance.length
+        ? (parsedEntities.attendance.length === 0 ? 'empty_both' : 'matched')
+        : (parsedEntities.attendance.length > state.attendance.length ? 'sheet_has_more' : 'system_has_more')
+    },
+    {
+      entity: 'purchases',
+      label: 'مشتريات وبونات الموردين (Achats)',
+      countInSheet: parsedEntities.purchases.length,
+      countInSystem: state.purchases.length,
+      status: parsedEntities.purchases.length === state.purchases.length
+        ? (parsedEntities.purchases.length === 0 ? 'empty_both' : 'matched')
+        : (parsedEntities.purchases.length > state.purchases.length ? 'sheet_has_more' : 'system_has_more')
+    },
+    {
+      entity: 'expenses',
+      label: 'مصاريف الورش النثرية (Dépenses)',
+      countInSheet: parsedEntities.expenses.length,
+      countInSystem: state.expenses.length,
+      status: parsedEntities.expenses.length === state.expenses.length
+        ? (parsedEntities.expenses.length === 0 ? 'empty_both' : 'matched')
+        : (parsedEntities.expenses.length > state.expenses.length ? 'sheet_has_more' : 'system_has_more')
+    },
+    {
+      entity: 'clientPayments',
+      label: 'دفعات ووضعيات الزبناء (Décomptes)',
+      countInSheet: parsedEntities.clientPayments.length,
+      countInSystem: state.clientPayments.length,
+      status: parsedEntities.clientPayments.length === state.clientPayments.length
+        ? (parsedEntities.clientPayments.length === 0 ? 'empty_both' : 'matched')
+        : (parsedEntities.clientPayments.length > state.clientPayments.length ? 'sheet_has_more' : 'system_has_more')
+    }
+  ];
+
+  // 4. Build Detailed Diffs list
+  const diffs: SheetAuditDiff[] = [];
+
+  // Check Schema / Structure
+  columnsComparison.forEach(c => {
+    if (c.status === 'missing_tab') {
+      diffs.push({
+        id: `missing_${c.sheetTitle}`,
+        direction: 'schema_structure',
+        title: `ورقة غير موجودة: ${c.sheetTitle} (${c.sheetLabel})`,
+        description: `الورقة الأساسية "${c.sheetTitle}" غير موجودة في جدول Google Sheets المركزي. يوصى بإنشائها لتطابق المنظومة.`,
+        severity: 'danger'
+      });
+    } else if (c.status === 'needs_update') {
+      const details: string[] = [];
+      if (!c.hasAdminId) details.push('ينقصها عمود كود المقاول (Admin ID)');
+      if (c.missingHeaders.length > 0) details.push(`ينقصها أعمدة: ${c.missingHeaders.slice(0, 3).join(', ')}${c.missingHeaders.length > 3 ? '...' : ''}`);
+      if (c.extraHeaders.some(h => /sheet\s*id/i.test(h))) details.push('تحتوي على أعمدة قديمة خاصة بروابط الشيتات المستقلة');
+
+      diffs.push({
+        id: `headers_${c.sheetTitle}`,
+        direction: 'schema_structure',
+        title: `تحديث رؤوس أعمدة: ${c.sheetTitle} (${c.sheetLabel})`,
+        description: details.join(' | '),
+        severity: 'warning'
+      });
+    }
+  });
+
+  // Check Legacy Tabs
+  if (legacyTabs.length > 0) {
+    diffs.push({
+      id: 'legacy_tabs_found',
+      direction: 'schema_structure',
+      title: `تم رصد ${legacyTabs.length} أوراق قديمة منفصلة (${legacyTabs.slice(0, 3).join(', ')}${legacyTabs.length > 3 ? '...' : ''})`,
+      description: 'هذه الأوراق تعود للهيكلة السابقة التي كانت تنشئ ورقة مستقلة لكل مقاول. يفضل مسحها وتنظيف الشيت ليعتمد الهيكلة الموحدة الحديثة.',
+      severity: 'warning'
+    });
+  }
+
+  // Check Data differences: Sheet -> System
+  entityCounts.forEach(e => {
+    if (e.status === 'sheet_has_more') {
+      const diffCount = e.countInSheet - e.countInSystem;
+      diffs.push({
+        id: `sheet_more_${e.entity}`,
+        direction: 'sheet_to_system',
+        title: `بيانات في الشيت غير مدرجة بالنظام (${e.label}): +${diffCount} سجل`,
+        description: `تم العثور على ${e.countInSheet} سجلاً في Google Sheets مقابل ${e.countInSystem} في المتصفح الحالي. قبول التغييرات سيجلب هذه البيانات فوراً.`,
+        severity: 'info'
+      });
+    } else if (e.status === 'system_has_more') {
+      const diffCount = e.countInSystem - e.countInSheet;
+      diffs.push({
+        id: `system_more_${e.entity}`,
+        direction: 'system_to_sheet',
+        title: `بيانات محلية لم تُرفع للشيت (${e.label}): +${diffCount} سجل`,
+        description: `يوجد في متصفحك ${e.countInSystem} سجلاً بينما يحتوي الشيت على ${e.countInSheet}. يمكن مزامنتها مع الشيت الموحد.`,
+        severity: 'info'
+      });
+    }
+  });
+
+  // Check contractor specific differences (e.g. ADM-3817-NX found in sheet but not in local state)
+  const missingAdmins = parsedEntities.admins.filter(sheetAdm => !state.adminAccounts.some(loc => loc.id.toUpperCase() === sheetAdm.id.toUpperCase()));
+  if (missingAdmins.length > 0) {
+    diffs.push({
+      id: 'missing_contractors_in_local',
+      direction: 'sheet_to_system',
+      title: `مقاولون مسجلون في الشيت لم يتم تحميلهم في هذا المتصفح: ${missingAdmins.map(a => `${a.id} (${a.name})`).join(', ')}`,
+      description: 'هؤلاء المقاولون مسجلون في الشيت المركزي. تحميلهم سيمكنهم من الدخول فوراً برمز PIN الخاص بهم دون أي عوائق.',
+      severity: 'warning'
+    });
+  }
+
+  const hasDiscrepancies = diffs.length > 0;
+  const isFirstBrowserLoad = state.adminAccounts.length <= 1 && (!state.projects || state.projects.length === 0);
+
+  return {
+    spreadsheetId,
+    spreadsheetTitle,
+    url,
+    timestamp,
+    columnsComparison,
+    entityCounts,
+    diffs,
+    legacyTabs,
+    hasDiscrepancies,
+    requiresReview: hasDiscrepancies,
+    isFirstBrowserLoad,
+    fetchedData: parsedEntities
+  };
+};
+
+/**
+ * Performs cleanup of legacy contractor tabs (e.g. مقاول_ADM-...) and recreates/formats
+ * the 8 standard unified sheets with proper headers and Admin ID columns.
+ */
+export const cleanAndRebuildMasterSheetStructure = async (
+  spreadsheetId: string,
+  state: AppState
+): Promise<{ success: boolean; message: string; deletedTabs: string[]; rebuiltTabs: string[] }> => {
+  const token = getAccessToken();
+  if (!token) {
+    throw new Error('يرجى تسجيل الدخول بحساب Google (Super Admin) أولاً لتنفيذ عملية مسح وتحديث أوراق Google Sheets.');
+  }
+
+  // 1. Inspect current sheet structure
+  const metaRes = await fetchWithRetry(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties(sheetId,title,index)`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (!metaRes.ok) {
+    throw new Error('تعذر الوصول إلى ملف Google Sheets. يرجى التحقق من الأذونات.');
+  }
+  const meta = await metaRes.json();
+  const existingSheets: { sheetId: number; title: string }[] = (meta.sheets || []).map((s: any) => ({
+    sheetId: s.properties.sheetId,
+    title: s.properties.title
+  }));
+
+  const standardTitles = BTP_STANDARD_SHEETS.map(s => s.title.toLowerCase());
+  const legacySheetsToDelete = existingSheets.filter(s => {
+    const t = s.title.trim().toLowerCase();
+    return !standardTitles.includes(t);
+  });
+
+  const requests: any[] = [];
+  const deletedTabs: string[] = [];
+  const rebuiltTabs: string[] = [];
+
+  // 2. Add missing standard sheets first so spreadsheet is never empty
+  for (const def of BTP_STANDARD_SHEETS) {
+    const exists = existingSheets.some(s => s.title.toLowerCase().trim() === def.title.toLowerCase());
+    if (!exists) {
+      requests.push({
+        addSheet: {
+          properties: {
+            title: def.title,
+            tabColor: def.tabColor
+          }
+        }
+      });
+      rebuiltTabs.push(def.title);
+    }
+  }
+
+  if (requests.length > 0) {
+    await fetchWithRetry(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requests })
+    });
+    requests.length = 0;
+  }
+
+  // 3. Delete legacy sheets
+  for (const leg of legacySheetsToDelete) {
+    requests.push({
+      deleteSheet: {
+        sheetId: leg.sheetId
+      }
+    });
+    deletedTabs.push(leg.title);
+  }
+
+  if (requests.length > 0) {
+    await fetchWithRetry(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requests })
+    }).catch(err => {
+      console.warn('Deleting legacy sheets warning:', err);
+    });
+  }
+
+  // 4. Write clean standard header rows to all 8 standard sheets
+  const headerUpdates = BTP_STANDARD_SHEETS.map(def => ({
+    range: `${def.title}!A1:${String.fromCharCode(65 + Math.min(def.headers.length - 1, 25))}1`,
+    values: [def.headers]
+  }));
+
+  await fetchWithRetry(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      valueInputOption: 'USER_ENTERED',
+      data: headerUpdates
+    })
+  });
+
+  // 5. Synchronize all system data to the unified sheets
+  await syncAllDataToGoogleSheets(spreadsheetId, state, 'ALL');
+
+  return {
+    success: true,
+    message: `تم بنجاح تنظيف الشيت: مسح ${deletedTabs.length} أوراق قديمة وتأسيس الهيكلة الموحدة لجميع الأوراش (${BTP_STANDARD_SHEETS.length} أوراق رئيسية مع كود المقاول).`,
+    deletedTabs,
+    rebuiltTabs: BTP_STANDARD_SHEETS.map(s => s.title)
+  };
+};
+
 
 /**
  * Create a new Master Google Spreadsheet in the user's Drive with all standard sheets & headers initialized
@@ -1017,7 +2011,9 @@ export const pushAdminsToMasterSheet = async (
       'Admin ID (كود الأدمين)',
       'Email (البريد)',
       'Name (الاسم)',
+      'Company (المقاولة)',
       'Phone (الهاتف / WhatsApp)',
+      'PIN (رمز PIN السري)',
       'Role (الدور)',
       'Type Abonnement (نوع الباقة)',
       'Date Début (تاريخ بدأ الباقة)',
@@ -1025,9 +2021,7 @@ export const pushAdminsToMasterSheet = async (
       'Status (الحالة التلقائية)',
       'CreatedAt (تاريخ التسجيل)',
       'LastLogin (آخر دخول)',
-      'Notes (ملاحظات)',
-      'Sheet ID (معرف شيت المقاول)',
-      'Sheet URL (رابط الشيت المستقل)'
+      'Notes (ملاحظات)'
     ],
     ...admins.map(a => {
       const autoStatus = computeAutoStatus(a.subscription, a.status);
@@ -1035,7 +2029,9 @@ export const pushAdminsToMasterSheet = async (
         a.id,
         a.email,
         a.name,
+        a.companyName || a.name,
         a.phone || '',
+        a.pin || '1234',
         a.role,
         formatTierLabel(a.subscription?.tier),
         formatSheetDate(a.subscription?.startDate),
@@ -1043,9 +2039,7 @@ export const pushAdminsToMasterSheet = async (
         formatAutoStatusDisplay(autoStatus, a.subscription?.tier),
         a.createdAt,
         a.lastLoginAt || 'لم يدخل بعد',
-        a.notes || '',
-        a.sheetId || '',
-        a.sheetUrl || ''
+        a.notes || ''
       ];
     })
   ];
@@ -1118,152 +2112,14 @@ export const safeIsoDate = (val?: string, fallback?: string): string => {
 export const fetchAdminRegistryFromSheet = async (
   spreadsheetId: string
 ): Promise<AdminAccount[]> => {
-  const token = getAccessToken();
-  if (!token) return [];
-
   try {
-    const res = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/Admin_Registry!A1:L200`, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
+    const data = await fetchSheetDataRows(spreadsheetId, 'Admin_Registry');
+    if (!data.rows || data.rows.length === 0) return [];
 
-    if (!res.ok) return [];
-    const data = await res.json();
-    if (!data.values || !Array.isArray(data.values) || data.values.length === 0) return [];
-
-    const firstRow: string[] = data.values[0] || [];
-    const isFirstRowHeader = firstRow.some(cell => /admin|email|بريد|كود|اسم|name/i.test(cell));
-
-    // Dynamic Header Detection
-    let colMap = {
-      id: 0,
-      email: 1,
-      name: 2,
-      phone: -1,
-      role: 3,
-      tier: 4,
-      startDate: 5,
-      endDate: 6,
-      status: 7,
-      createdAt: 8,
-      lastLogin: 9,
-      notes: 10,
-      sheetId: -1,
-      sheetUrl: -1
-    };
-
-    if (isFirstRowHeader) {
-      firstRow.forEach((headerStr, idx) => {
-        const h = (headerStr || '').toLowerCase();
-        if (h.includes('admin id') || h.includes('كود')) colMap.id = idx;
-        else if (h.includes('email') || h.includes('بريد')) colMap.email = idx;
-        else if (h.includes('phone') || h.includes('هاتف') || h.includes('whatsapp') || h.includes('واتساب')) colMap.phone = idx;
-        else if (h.includes('name') || h.includes('الاسم') || h.includes('المقاول')) colMap.name = idx;
-        else if (h.includes('role') || h.includes('الدور') || h.includes('الصلاحية')) colMap.role = idx;
-        else if (h.includes('type') || h.includes('abonnement') || h.includes('باقة') || h.includes('اشتراك')) colMap.tier = idx;
-        else if (h.includes('début') || h.includes('بدأ') || h.includes('بداية')) colMap.startDate = idx;
-        else if (h.includes('fin') || h.includes('إنتهاء') || h.includes('انتهاء')) colMap.endDate = idx;
-        else if (h.includes('status') || h.includes('الحالة')) colMap.status = idx;
-        else if (h.includes('created') || h.includes('تسجيل')) colMap.createdAt = idx;
-        else if (h.includes('login') || h.includes('دخول')) colMap.lastLogin = idx;
-        else if (h.includes('sheet id') || h.includes('معرف شيت')) colMap.sheetId = idx;
-        else if (h.includes('sheet url') || h.includes('رابط الشيت')) colMap.sheetUrl = idx;
-        else if (h.includes('note') || h.includes('ملاحظ')) colMap.notes = idx;
-      });
-    }
-
-    const rowsToParse = isFirstRowHeader ? data.values.slice(1) : data.values;
-
-    return rowsToParse.map((row: string[]) => {
-      if (!row || !row[0] || !row[1]) return null;
-
-      const adminId = (row[colMap.id] || row[0] || '').trim();
-      const email = (row[colMap.email] || row[1] || '').trim().toLowerCase();
-      const name = (row[colMap.name] || row[2] || '').trim() || 'مدير عام';
-
-      let phone = '';
-      if (colMap.phone !== -1 && row[colMap.phone]) {
-        phone = (row[colMap.phone] || '').trim();
-      } else if (row.length >= 12 && /^[+0-9\s-]{6,}$/.test((row[3] || '').trim())) {
-        // Detected phone in column 3
-        phone = (row[3] || '').trim();
-      }
-
-      let role: 'super_admin' | 'admin' = 'admin';
-      const roleRaw = (row[colMap.role] || (colMap.phone !== -1 ? row[4] : row[3]) || '').trim().toLowerCase();
-      if (roleRaw === 'super_admin') role = 'super_admin';
-
-      // Detect if row is in legacy 7-column schema
-      const col4 = (row[4] || '').trim().toLowerCase();
-      const isLegacy = row.length <= 8 || ['active', 'نشط', 'suspended', 'معلق', 'expired', 'منتهي'].includes(col4);
-
-      let tier: SubscriptionTier = 'trial_3days';
-      let startDate = new Date().toISOString();
-      let endDate = new Date(Date.now() + 30 * 86400000).toISOString();
-      let rawStatus = 'active';
-      let createdAt = new Date().toISOString();
-      let lastLoginAt: string | undefined = undefined;
-      let notes = '';
-
-      if (isLegacy) {
-        rawStatus = (row[4] || 'active').trim();
-        createdAt = safeIsoDate(row[5], new Date().toISOString());
-        startDate = createdAt;
-        const startMs = new Date(startDate).getTime();
-        endDate = new Date(startMs + 30 * 86400000).toISOString();
-        tier = 'monthly';
-        lastLoginAt = row[6] && row[6] !== 'لم يدخل بعد' ? row[6] : undefined;
-        notes = (row[7] || '').trim();
-      } else {
-        const tierRaw = row[colMap.tier] || (colMap.phone !== -1 ? row[5] : row[4]);
-        tier = parseTierLabel(tierRaw);
-        
-        const startRaw = row[colMap.startDate] || (colMap.phone !== -1 ? row[6] : row[5]);
-        startDate = safeIsoDate(startRaw, new Date().toISOString());
-
-        const endRaw = row[colMap.endDate] || (colMap.phone !== -1 ? row[7] : row[6]);
-        const defaultEndDays = tier === 'annual' ? 365 : tier === 'monthly' ? 30 : 3;
-        endDate = safeIsoDate(endRaw, new Date(Date.now() + defaultEndDays * 86400000).toISOString());
-
-        rawStatus = (row[colMap.status] || (colMap.phone !== -1 ? row[8] : row[7]) || 'active').trim();
-        createdAt = safeIsoDate(row[colMap.createdAt] || (colMap.phone !== -1 ? row[9] : row[8]), startDate);
-        const loginRaw = row[colMap.lastLogin] || (colMap.phone !== -1 ? row[10] : row[9]);
-        lastLoginAt = loginRaw && loginRaw !== 'لم يدخل بعد' ? loginRaw : undefined;
-        notes = (row[colMap.notes] || (colMap.phone !== -1 ? row[11] : row[10]) || '').trim();
-      }
-
-      const subscription: SubscriptionInfo = {
-        tier: tier as any,
-        startDate,
-        endDate,
-        status: 'active',
-        price: tier === 'annual' ? 2610 : tier === 'monthly' ? 290 : 0
-      };
-
-      const autoStatus = computeAutoStatus(subscription, rawStatus);
-      if (autoStatus === 'expired') {
-        subscription.status = 'expired';
-      }
-
-      const sheetIdVal = colMap.sheetId !== -1 ? (row[colMap.sheetId] || '').trim() : '';
-      const sheetUrlVal = colMap.sheetUrl !== -1 ? (row[colMap.sheetUrl] || '').trim() : '';
-
-      return {
-        id: adminId,
-        email,
-        name,
-        phone: phone || undefined,
-        role,
-        status: autoStatus,
-        subscription,
-        createdAt,
-        lastLoginAt,
-        notes,
-        sheetId: sheetIdVal || undefined,
-        sheetUrl: sheetUrlVal || (sheetIdVal ? `https://docs.google.com/spreadsheets/d/${sheetIdVal}/edit` : undefined)
-      };
-    }).filter((a): a is AdminAccount => Boolean(a && a.id && a.email));
+    const parsed = parseAllOperationalDataFromRows({ Admin_Registry: data });
+    return parsed.admins;
   } catch (err) {
-    console.error('Failed to read Admin Registry from sheet:', err);
+    console.error('Failed to fetch Admin Registry from Google Sheets:', err);
     return [];
   }
 };
@@ -1722,9 +2578,30 @@ export const syncAllDataToGoogleSheets = async (
     ])
   ];
 
+  const pointageData = [
+    ['ID Pointage', 'ID المقاول (Admin ID)', 'Date', 'ID Chantier', 'Nom Chantier', 'ID Ouvrier', 'Nom Ouvrier', 'Statut Pointage', 'Heures Sup', 'Avances MAD', 'Notes'],
+    ...state.attendance.map(a => {
+      const p = state.projects.find(proj => proj.id === a.projectId);
+      const w = state.workers.find(wor => wor.id === a.workerId);
+      return [
+        a.id,
+        a.adminId || '',
+        a.date,
+        a.projectId,
+        p?.name || '',
+        a.workerId,
+        w?.name || '',
+        a.status,
+        a.overtimeHours || 0,
+        a.advanceAmount || 0,
+        a.notes || ''
+      ];
+    })
+  ];
+
   // Batch update all master operational sheets
   const updateTab = async (sheetName: string, fallbackArabic: string, values: any[][]) => {
-    await fetchWithRetry(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(sheetName)}!A2:Z2000:clear`, {
+    await fetchWithRetry(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(sheetName)}!A2:Z3000:clear`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` }
     }).catch(() => null);
@@ -1736,7 +2613,7 @@ export const syncAllDataToGoogleSheets = async (
     }).catch(() => null);
 
     if (!res || !res.ok) {
-      await fetchWithRetry(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(fallbackArabic)}!A2:Z2000:clear`, {
+      await fetchWithRetry(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(fallbackArabic)}!A2:Z3000:clear`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` }
       }).catch(() => null);
@@ -1752,6 +2629,7 @@ export const syncAllDataToGoogleSheets = async (
 
   await updateTab('Chantiers_Projets', 'المشاريع_الأوراش', projectsData);
   await updateTab('Bordereau_CPS', 'بنود_CPS_والبردورو', cpsData);
+  await updateTab('Pointage_Journalier', 'بوانطاج_العمال', pointageData);
   await updateTab('Paie_Ouvriers', 'خلاص_العمال_والأجور', workersData);
   await updateTab('Achats_Fournisseurs', 'المشتريات_والموردين', purchasesData);
   await updateTab('Depenses_Chantier', 'المصاريف_اليومية', expensesData);
@@ -1760,21 +2638,12 @@ export const syncAllDataToGoogleSheets = async (
   // Synchronize Admin_Registry for Super Admin
   if (state.adminAccounts && state.adminAccounts.length > 0) {
     await pushAdminsToMasterSheet(spreadsheetId, state.adminAccounts);
-    
-    // Also synchronize each contractor's dedicated tab
-    for (const admin of state.adminAccounts) {
-      try {
-        await syncContractorTabToMasterSheet(spreadsheetId, admin, state, token);
-      } catch (err) {
-        console.warn(`Sync contractor tab warning for ${admin.id}:`, err);
-      }
-    }
   }
 
   return {
     success: true,
     rowsCount: totalRows,
-    message: `تمت مزامنة المنظومة بنجاح: تم تحديث الجداول العامة، وتوليد أوراق المقاولين المستقلة في الشيت الأساسي (${totalRows} سجلاً).`
+    message: `تمت مزامنة المنظومة بنجاح في ملف Google Sheets المركزي الموحد (${totalRows} سجلاً عبر كافة الأوراق).`
   };
 };
 

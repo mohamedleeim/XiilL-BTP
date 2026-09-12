@@ -24,7 +24,8 @@ import {
   DriveFileItem,
   ChatSpaceItem,
   ActiveSession,
-  SubscriptionTier
+  SubscriptionTier,
+  MasterSheetAuditReport
 } from '../types';
 import {
   createDefaultTrialSubscription,
@@ -81,7 +82,9 @@ import {
   SUPER_ADMIN_EMAIL,
   SUPER_ADMIN_MASTER_KEY,
   wipeAllSpreadsheetData,
-  pushAdminsToMasterSheet
+  pushAdminsToMasterSheet,
+  auditMasterSheetBidirectional,
+  cleanAndRebuildMasterSheetStructure
 } from '../services/googleWorkspace';
 import { cpsTemplates } from '../db/seedData';
 import { translations } from '../i18n/translations';
@@ -300,6 +303,16 @@ interface AppContextType {
   openSubscriptionPlans: () => void;
   closeSubscriptionPlans: () => void;
   updateAdminSubscription: (adminId: string, tier: SubscriptionTier) => void;
+
+  // Startup Sheet Verification & Bidirectional Audit (المطابقة وفحص الأعمدة)
+  auditReport: MasterSheetAuditReport | null;
+  isAuditModalOpen: boolean;
+  isAuditing: boolean;
+  openAuditModal: () => void;
+  closeAuditModal: () => void;
+  runMasterSheetAudit: (silent?: boolean) => Promise<MasterSheetAuditReport | null>;
+  applySheetAuditChanges: () => Promise<{ success: boolean; message: string }>;
+  rebuildUnifiedMasterStructure: () => Promise<{ success: boolean; message: string }>;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -581,6 +594,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const loginAsAdmin = async (adminCode: string, pin?: string, email?: string, name?: string) => {
     const cleanCode = adminCode.trim().toUpperCase();
     let found = state.adminAccounts.find(a => a.id.toUpperCase() === cleanCode);
+
+    if (!found) {
+      // Attempt immediate remote lookup in Master Google Sheet
+      try {
+        const sheetId = state.workspaceConfig.masterSpreadsheetId || state.workspaceConfig.masterSheetId || KNOWN_MASTER_SPREADSHEET_ID;
+        const remoteAdmins = await fetchAdminRegistryFromSheet(sheetId);
+        const remoteFound = remoteAdmins.find(a => a.id.toUpperCase() === cleanCode);
+        if (remoteFound) {
+          found = remoteFound;
+          setState(prev => ({
+            ...prev,
+            adminAccounts: [...prev.adminAccounts.filter(a => a.id.toUpperCase() !== cleanCode), remoteFound]
+          }));
+        }
+      } catch (err) {
+        console.warn('Could not query remote sheet during login:', err);
+      }
+    }
 
     if (!found) {
       if (cleanCode.startsWith('ADM-')) {
@@ -2995,6 +3026,183 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  // Sheet Verification & Bidirectional Audit (فحص الأوراق ورؤوس الأعمدة والمطابقة المزدوجة)
+  const [auditReport, setAuditReport] = useState<MasterSheetAuditReport | null>(null);
+  const [isAuditModalOpen, setIsAuditModalOpen] = useState<boolean>(false);
+  const [isAuditing, setIsAuditing] = useState<boolean>(false);
+
+  const openAuditModal = () => setIsAuditModalOpen(true);
+  const closeAuditModal = () => setIsAuditModalOpen(false);
+
+  const runMasterSheetAudit = async (silent: boolean = false): Promise<MasterSheetAuditReport | null> => {
+    const sheetId = state.workspaceConfig.masterSpreadsheetId || state.workspaceConfig.masterSheetId || KNOWN_MASTER_SPREADSHEET_ID;
+    if (!sheetId) return null;
+
+    setIsAuditing(true);
+    try {
+      const report = await auditMasterSheetBidirectional(sheetId, state);
+      setAuditReport(report);
+
+      // On startup or first browser load: if there are registered contractors in the sheet
+      // who are not yet present in local state, auto-incorporate them into adminAccounts!
+      // This immediately unblocks contractors (like ADM-3817-NX) so they can enter their PIN without hurdles.
+      if (report.fetchedData?.admins && report.fetchedData.admins.length > 0) {
+        setState(prev => {
+          const currentList = prev.adminAccounts || [];
+          let hasChanges = false;
+          const merged = [...currentList];
+
+          report.fetchedData!.admins.forEach(remoteAdmin => {
+            const existingIdx = merged.findIndex(a => a.id.toUpperCase() === remoteAdmin.id.toUpperCase());
+            if (existingIdx === -1) {
+              merged.push(remoteAdmin);
+              hasChanges = true;
+            } else {
+              if (remoteAdmin.pin && merged[existingIdx].pin !== remoteAdmin.pin) {
+                merged[existingIdx] = { ...merged[existingIdx], pin: remoteAdmin.pin };
+                hasChanges = true;
+              }
+              if (remoteAdmin.companyName && merged[existingIdx].companyName !== remoteAdmin.companyName) {
+                merged[existingIdx] = { ...merged[existingIdx], companyName: remoteAdmin.companyName };
+                hasChanges = true;
+              }
+            }
+          });
+
+          if (hasChanges) {
+            return {
+              ...prev,
+              adminAccounts: merged
+            };
+          }
+          return prev;
+        });
+      }
+
+      return report;
+    } catch (err) {
+      console.warn('Bidirectional sheet audit warning:', err);
+      return null;
+    } finally {
+      setIsAuditing(false);
+    }
+  };
+
+  const applySheetAuditChanges = async (): Promise<{ success: boolean; message: string }> => {
+    if (!auditReport || !auditReport.fetchedData) {
+      return { success: false, message: 'لا توجد بيانات مستوردة للتطبيق.' };
+    }
+
+    const { admins, projects, workers, cpsArticles, attendance, purchases, expenses, clientPayments } = auditReport.fetchedData;
+
+    setState(prev => {
+      const mergedAdmins = [...prev.adminAccounts];
+      admins.forEach(item => {
+        const idx = mergedAdmins.findIndex(a => a.id.toUpperCase() === item.id.toUpperCase());
+        if (idx === -1) mergedAdmins.push(item);
+        else mergedAdmins[idx] = { ...mergedAdmins[idx], ...item };
+      });
+
+      const mergedProjects = [...prev.projects];
+      projects.forEach(item => {
+        const idx = mergedProjects.findIndex(p => p.id === item.id);
+        if (idx === -1) mergedProjects.push(item);
+        else mergedProjects[idx] = { ...mergedProjects[idx], ...item };
+      });
+
+      const mergedWorkers = [...prev.workers];
+      workers.forEach(item => {
+        const idx = mergedWorkers.findIndex(w => w.id === item.id);
+        if (idx === -1) mergedWorkers.push(item);
+        else mergedWorkers[idx] = { ...mergedWorkers[idx], ...item };
+      });
+
+      const mergedCps = [...prev.cpsArticles];
+      cpsArticles.forEach(item => {
+        const idx = mergedCps.findIndex(c => c.id === item.id);
+        if (idx === -1) mergedCps.push(item);
+        else mergedCps[idx] = { ...mergedCps[idx], ...item };
+      });
+
+      const mergedAttendance = [...prev.attendance];
+      attendance.forEach(item => {
+        const idx = mergedAttendance.findIndex(a => a.id === item.id);
+        if (idx === -1) mergedAttendance.push(item);
+        else mergedAttendance[idx] = { ...mergedAttendance[idx], ...item };
+      });
+
+      const mergedPurchases = [...prev.purchases];
+      purchases.forEach(item => {
+        const idx = mergedPurchases.findIndex(p => p.id === item.id);
+        if (idx === -1) mergedPurchases.push(item);
+        else mergedPurchases[idx] = { ...mergedPurchases[idx], ...item };
+      });
+
+      const mergedExpenses = [...prev.expenses];
+      expenses.forEach(item => {
+        const idx = mergedExpenses.findIndex(e => e.id === item.id);
+        if (idx === -1) mergedExpenses.push(item);
+        else mergedExpenses[idx] = { ...mergedExpenses[idx], ...item };
+      });
+
+      const mergedPayments = [...prev.clientPayments];
+      clientPayments.forEach(item => {
+        const idx = mergedPayments.findIndex(cp => cp.id === item.id);
+        if (idx === -1) mergedPayments.push(item);
+        else mergedPayments[idx] = { ...mergedPayments[idx], ...item };
+      });
+
+      const auditLog = createActivityLog(
+        state.currentUser?.id || 'system',
+        state.currentUser?.name || 'المشرف',
+        'update',
+        'system',
+        'تم قبول وتطبيق تحديثات البيانات من Google Sheets المركزي إلى النظام بنجاح'
+      );
+
+      return {
+        ...prev,
+        adminAccounts: mergedAdmins,
+        projects: mergedProjects,
+        workers: mergedWorkers,
+        cpsArticles: mergedCps,
+        attendance: mergedAttendance,
+        purchases: mergedPurchases,
+        expenses: mergedExpenses,
+        clientPayments: mergedPayments,
+        activityLogs: [auditLog, ...prev.activityLogs]
+      };
+    });
+
+    setIsAuditModalOpen(false);
+    void runMasterSheetAudit(true);
+
+    return {
+      success: true,
+      message: 'تم قبول وتطبيق التغييرات في النظام المحلي بنجاح!'
+    };
+  };
+
+  const rebuildUnifiedMasterStructure = async (): Promise<{ success: boolean; message: string }> => {
+    const sheetId = state.workspaceConfig.masterSpreadsheetId || state.workspaceConfig.masterSheetId || KNOWN_MASTER_SPREADSHEET_ID;
+    if (!sheetId) {
+      throw new Error('لم يتم تحديد معرف الشيت المركزي.');
+    }
+
+    const res = await cleanAndRebuildMasterSheetStructure(sheetId, state);
+    void runMasterSheetAudit(true);
+
+    return res;
+  };
+
+  // Run startup audit against Master Sheet
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      void runMasterSheetAudit(true);
+    }, 800);
+    return () => clearTimeout(timer);
+  }, []);
+
   return (
     <AppContext.Provider
       value={{
@@ -3118,7 +3326,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isSubscriptionPlansOpen,
         openSubscriptionPlans,
         closeSubscriptionPlans,
-        updateAdminSubscription
+        updateAdminSubscription,
+
+        // Startup Sheet Verification & Bidirectional Audit
+        auditReport,
+        isAuditModalOpen,
+        isAuditing,
+        openAuditModal,
+        closeAuditModal,
+        runMasterSheetAudit,
+        applySheetAuditChanges,
+        rebuildUnifiedMasterStructure
       }}
     >
       {children}

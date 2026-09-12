@@ -24,6 +24,8 @@ import { SuperAdminHubView } from './components/admin/SuperAdminHubView';
 import { TenantSupervisorManagerView } from './components/team/TenantSupervisorManagerView';
 import { ManagerSheetOnboardingModal } from './components/workspace/ManagerSheetOnboardingModal';
 import { SubscriptionPlansModal } from './components/subscription/SubscriptionPlansModal';
+import { SheetAuditAlertBanner } from './components/common/SheetAuditAlertBanner';
+import { MasterSheetAuditModal } from './components/modals/MasterSheetAuditModal';
 import { Crown, Eye } from 'lucide-react';
 
 const MainContent: React.FC = () => {
@@ -140,6 +142,12 @@ const MainContent: React.FC = () => {
 
       {/* Top Header */}
       <Header />
+
+      {/* Sheet Verification & Bidirectional Audit Alert Banner */}
+      <SheetAuditAlertBanner />
+
+      {/* Master Sheet Audit & Bidirectional Inspection Modal */}
+      <MasterSheetAuditModal />
 
       {/* Offline sync status notice */}
       <OfflineBanner />

@@ -55,6 +55,8 @@ import {
 } from '../../services/googleWorkspace';
 import { AdminAccount, SubscriptionTier } from '../../types';
 import { getTierDurationInfo } from '../../services/subscriptionPlans';
+import { SheetAuditAlertBanner } from '../common/SheetAuditAlertBanner';
+import { MasterSheetAuditModal } from '../modals/MasterSheetAuditModal';
 
 interface MasterControlPanelProps {
   onInspectTenant?: (tenantId: string) => void;
@@ -78,7 +80,11 @@ export const MasterControlPanel: React.FC<MasterControlPanelProps> = ({ onInspec
     exportBackupJson,
     importBackupJson,
     resetToCleanData,
-    logoutSession
+    logoutSession,
+    auditReport,
+    openAuditModal,
+    runMasterSheetAudit,
+    isAuditing
   } = useApp();
 
   type MasterTab = 'overview' | 'tenants' | 'cloud' | 'audit' | 'maintenance';
@@ -288,12 +294,19 @@ export const MasterControlPanel: React.FC<MasterControlPanelProps> = ({ onInspec
     setIsInspecting(true);
     setNotification(null);
     try {
-      const val = await inspectAndConnectMasterSheet(workspaceConfig.masterSheetId || KNOWN_MASTER_SPREADSHEET_ID);
-      setSheetValidation(val);
-      setNotification({
-        type: 'success',
-        text: val.message
-      });
+      const report = await runMasterSheetAudit();
+      openAuditModal();
+      if (report?.hasDiscrepancies) {
+        setNotification({
+          type: 'error',
+          text: `تم فحص الملف: تم رصد ${report.diffs.length} فروقات بين النظام والشيت (تفاصيلها معروضة بالنافذة).`
+        });
+      } else {
+        setNotification({
+          type: 'success',
+          text: 'تم فحص الشيت المركزي: كافة الأوراق ورؤوس الأعمدة المعيارية متطابقة بنسبة 100%!'
+        });
+      }
     } catch (err: any) {
       setNotification({ type: 'error', text: err?.message || 'فشل فحص الأوراق ورؤوس الأعمدة في Google Sheets.' });
     } finally {
@@ -421,6 +434,12 @@ export const MasterControlPanel: React.FC<MasterControlPanelProps> = ({ onInspec
 
         </div>
       </header>
+
+      {/* Sheet Verification & Bidirectional Audit Alert */}
+      <SheetAuditAlertBanner />
+
+      {/* Master Sheet Audit Modal */}
+      <MasterSheetAuditModal />
 
       {/* ========================================================================= */}
       {/* NOTIFICATION TOAST */}
