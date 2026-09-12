@@ -194,14 +194,14 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
                     </span>
                   </div>
                   <div className="flex items-center justify-between text-zinc-300 border-t border-zinc-800/80 pt-2">
-                    <span>ورقة عمل مقاولتك الخاصة:</span>
+                    <span>قاعدة البيانات المركزية:</span>
                     <span className="font-mono font-bold text-emerald-400">
-                      {activeChantierSheet.tabName || `مقاول_${currentAdmin?.id || activeSession?.id}`}
+                      8 أوراق رئيسية موحدة (Admin ID: {currentAdmin?.id || activeSession?.id})
                     </span>
                   </div>
                   <div className="flex items-center justify-between text-zinc-400 text-[11px] border-t border-zinc-800/80 pt-2">
                     <span>حالة الربط والتزامن:</span>
-                    <span className="text-emerald-400 font-bold">نشط ومتصل تلقائياً</span>
+                    <span className="text-emerald-400 font-bold">نشط ومتصل بالمنظومة</span>
                   </div>
                 </div>
 
@@ -212,7 +212,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
                     className="flex-1 py-2.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-zinc-950 font-bold text-xs flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer disabled:opacity-50"
                   >
                     {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-                    <span>مزامنة ورقة مقاولتي مع الشيت الأساسي</span>
+                    <span>مزامنة بيانات مقاولتي مع Google Sheets</span>
                   </button>
 
                   <a
@@ -258,13 +258,13 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
 
                 <div className="p-3 rounded-lg bg-zinc-900 border border-zinc-800 text-xs space-y-2">
                   <div className="flex items-center justify-between text-zinc-300">
-                    <span>ورقة شيت المدير العام:</span>
+                    <span>حساب المقاول المعتمد:</span>
                     <span className="font-mono font-bold text-emerald-400">
-                      مقاول_{activeSession?.adminId}
+                      {activeSession?.adminId}
                     </span>
                   </div>
                   <div className="text-[11px] text-zinc-400 leading-relaxed border-t border-zinc-800/80 pt-2">
-                    يظهر لك في النظام كافة مشاريع ومعلومات الورقة الخاصة بمديرك العام دون الحاجة لأي حساب إلكتروني شخصي.
+                    يظهر لك في النظام مشاريع ومعطيات مقاولك المعتمد، وتتم المزامنة المركزية المباشرة مع جداول Google Sheets تلقائياً.
                   </div>
                 </div>
 
@@ -325,7 +325,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
                 </div>
                 <div className="flex items-center justify-between border-t border-zinc-800/80 pt-2">
                   <span>هيكلية التخزين:</span>
-                  <span className="text-emerald-400 font-bold">شيت مركزي واحد + ورقة لكل مقاول</span>
+                  <span className="text-emerald-400 font-bold">8 أوراق مركزية موحدة + عزل تلقائي بالمقاول</span>
                 </div>
               </div>
 

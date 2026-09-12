@@ -925,29 +925,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   }, []);
 
-  const triggerSync = async (): Promise<void> => {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        setState(prev => {
-          const log = createActivityLog(
-            prev.currentUser.id,
-            prev.currentUser.name,
-            'sync',
-            'system',
-            'مزامنة يدوية مكتملة: تم تحديث كافة الجداول والمستندات محلياً وسحابياً'
-          );
-          return {
-            ...prev,
-            syncQueue: [],
-            lastSyncTime: new Date().toISOString(),
-            activityLogs: [log, ...prev.activityLogs]
-          };
-        });
-        resolve();
-      }, 700);
-    });
-  };
-
   // Backup & Restore
   const exportBackupJson = () => {
     const backupData = {
@@ -2651,7 +2628,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return res;
   };
 
-  const syncToGoogleSheets = async (targetAdminId?: string) => {
+  const syncToGoogleSheets = async (targetAdminId?: string, interactive: boolean = true) => {
     // Unified Architecture: Always target the Master Google Sheet of Super Admin
     const sheetId = state.workspaceConfig.masterSheetId || KNOWN_MASTER_SPREADSHEET_ID;
 
@@ -2665,7 +2642,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         : (state.currentAdmin?.id || activeSession?.adminId || activeSession?.id)
     );
 
-    const res = await syncAllDataToGoogleSheets(sheetId, state, effectiveAdminId);
+    const res = await syncAllDataToGoogleSheets(sheetId, state, effectiveAdminId, interactive);
     
     setState(prev => {
       const nowIso = new Date().toISOString();
@@ -2686,6 +2663,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     });
     return res;
+  };
+
+  const triggerSync = async (): Promise<void> => {
+    try {
+      const res = await syncToGoogleSheets(undefined, true);
+      setState(prev => {
+        const log = createActivityLog(
+          prev.currentUser.id,
+          prev.currentUser.name,
+          'sync',
+          'system',
+          res?.message || 'مزامنة يدوية مكتملة: تم توثيق وحفظ كافة البيانات في Google Sheets'
+        );
+        return {
+          ...prev,
+          syncQueue: [],
+          lastSyncTime: new Date().toISOString(),
+          activityLogs: [log, ...prev.activityLogs]
+        };
+      });
+    } catch (err: any) {
+      console.error('triggerSync error:', err);
+      throw err;
+    }
   };
 
   const createMasterSheet = async (title?: string) => {

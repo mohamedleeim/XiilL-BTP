@@ -15,7 +15,10 @@ import {
   Sparkles,
   LogOut,
   Crown,
-  HardHat
+  HardHat,
+  CheckCircle2,
+  AlertCircle,
+  X
 } from 'lucide-react';
 import { AdminLoginModal } from '../auth/AdminLoginModal';
 
@@ -49,15 +52,49 @@ export const Header: React.FC = () => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showAdminModal, setShowAdminModal] = useState(false);
+  const [syncFeedback, setSyncFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   const handleManualSync = async () => {
     setIsSyncing(true);
-    await triggerSync();
-    setIsSyncing(false);
+    setSyncFeedback(null);
+    try {
+      await triggerSync();
+      setSyncFeedback({
+        type: 'success',
+        message: 'تمت المزامنة وحفظ البيانات في أوراق Google Sheets المركزية بنجاح!'
+      });
+      setTimeout(() => setSyncFeedback(null), 4500);
+    } catch (err: any) {
+      console.error('Manual sync error in Header:', err);
+      setSyncFeedback({
+        type: 'error',
+        message: err?.message || 'تعذر إتمام المزامنة مع Google Sheets.'
+      });
+      setTimeout(() => setSyncFeedback(null), 7000);
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   return (
     <header className="sticky top-0 z-30 bg-zinc-900/95 backdrop-blur border-b border-zinc-800 text-zinc-100 px-3 sm:px-6 py-2.5">
+      {syncFeedback && (
+        <div className={`fixed top-14 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-xl border shadow-2xl text-xs font-medium flex items-center gap-2.5 max-w-lg w-[90%] backdrop-blur transition-all animate-in fade-in slide-in-from-top-2 ${
+          syncFeedback.type === 'success'
+            ? 'bg-zinc-950/95 border-emerald-500/50 text-emerald-300'
+            : 'bg-zinc-950/95 border-red-500/50 text-red-300'
+        }`}>
+          {syncFeedback.type === 'success' ? (
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+          ) : (
+            <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+          )}
+          <span className="flex-1 leading-snug">{syncFeedback.message}</span>
+          <button onClick={() => setSyncFeedback(null)} className="p-1 hover:text-white text-zinc-400 shrink-0">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
       <div className="max-w-7xl mx-auto flex items-center justify-between gap-2 sm:gap-4">
         
           {/* Brand & Project Selector */}

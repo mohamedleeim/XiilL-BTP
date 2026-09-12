@@ -2436,14 +2436,15 @@ export const syncContractorTabToMasterSheet = async (
 };
 
 /**
- * Synchronize application tables into Google Sheets (Single Master Sheet Architecture)
- * Each contractor has their OWN dedicated tab (مقاول_ID) within the Super Admin's Master Sheet!
- * Exempts contractors and supervisors from Gmail login!
+ * Synchronize application tables into Google Sheets (Unified 8 Master Sheets Architecture)
+ * Writes data directly into the 8 operational sheets with mandatory 'ID المقاول (Admin ID)' column.
+ * For contractors, merges their data into the master sheets without overwriting other contractors.
  */
 export const syncAllDataToGoogleSheets = async (
   spreadsheetId: string,
   state: AppState,
-  targetAdminId?: string
+  targetAdminId?: string,
+  interactive: boolean = true
 ): Promise<{ success: boolean; rowsCount: number; message: string }> => {
   // Filter state if targetAdminId is specified (Tenant Isolation)
   const filterByAdmin = <T>(items: T[]): T[] => {
@@ -2454,62 +2455,62 @@ export const syncAllDataToGoogleSheets = async (
   const projects = filterByAdmin(state.projects);
   const cpsArticles = filterByAdmin(state.cpsArticles);
   const workers = filterByAdmin(state.workers);
+  const attendance = filterByAdmin(state.attendance);
   const purchases = filterByAdmin(state.purchases);
   const expenses = filterByAdmin(state.expenses);
   const clientPayments = filterByAdmin(state.clientPayments);
 
-  const totalRows = projects.length + cpsArticles.length + workers.length + purchases.length + expenses.length + clientPayments.length;
+  const totalRows = projects.length + cpsArticles.length + workers.length + attendance.length + purchases.length + expenses.length + clientPayments.length;
 
-  const token = getAccessToken();
+  let token = getAccessToken();
   if (!token) {
-    // Graceful offline/local persistence acknowledgement: contractors & supervisors never blocked by Gmail
-    return {
-      success: true,
-      rowsCount: totalRows,
-      message: `تم حفظ وتوثيق كافة المعطيات (${totalRows} سجلاً) في النظام المحلي بنجاح، وربطها بورقة المقاول في الشيت الأساسي للمنظومة.`
-    };
+    if (interactive) {
+      try {
+        const authRes = await signInWithGoogle();
+        token = authRes.accessToken;
+        setAccessToken(token);
+      } catch (authErr: any) {
+        throw new Error('لم يتم تسجيل الدخول بحساب Google. يلزم حساب Google مصرح له لتعديل الشيت وحفظ البيانات في Google Sheets.');
+      }
+    } else {
+      return {
+        success: false,
+        rowsCount: totalRows,
+        message: 'يلزم تسجيل الدخول بحساب Google لتفويض حفظ البيانات في Google Sheets.'
+      };
+    }
   }
 
-  // 1. If targetAdminId is specified (Contractor or their Supervisor):
-  // Sync directly to the contractor's dedicated tab in Master Google Sheet!
-  if (targetAdminId && targetAdminId !== 'ALL') {
-    const matchedAdmin = state.adminAccounts.find(a => a.id.toUpperCase() === targetAdminId.toUpperCase()) || {
-      id: targetAdminId,
-      name: state.currentAdmin?.name || 'المقاول المعتمد'
-    };
-
-    await syncContractorTabToMasterSheet(spreadsheetId, matchedAdmin, state, token);
-
-    return {
-      success: true,
-      rowsCount: totalRows,
-      message: `تمت المزامنة بنجاح مع ورقة مقاولتك (مقاول_${targetAdminId}) في الشيت الأساسي لـ Super Admin (${totalRows} سجلاً).`
-    };
+  // Ensure all 8 standard sheets and row 1 column headers exist
+  try {
+    await inspectAndRepairSpreadsheet(spreadsheetId, true);
+  } catch (inspectErr) {
+    console.warn('Inspect & repair spreadsheet notice:', inspectErr);
   }
 
-  // 2. If Super Admin (targetAdminId === 'ALL'):
-  // Sync all global operational tabs + Admin Registry + every contractor's dedicated tab!
-  const projectsData = [
-    ['ID Chantier', 'Nom du Chantier', 'Maître d\'Ouvrage / Client', 'Téléphone', 'Ville', 'Budget Contractuel (MAD)', 'Date Début', 'Statut', 'Avancement %', 'ID المقاول'],
-    ...state.projects.map(p => [
-      p.id,
-      p.name,
-      p.clientName,
-      p.clientPhone,
-      p.locationCity,
-      p.budget,
-      p.startDate,
-      p.status,
-      `${p.progressPct}%`,
-      p.adminId || ''
-    ])
-  ];
+  // 1. Projects Data (Chantiers_Projets)
+  const projectsRows = projects.map(p => [
+    p.id,
+    p.adminId || targetAdminId || '',
+    p.name,
+    p.clientName,
+    p.clientPhone,
+    p.locationCity,
+    p.budget,
+    p.startDate,
+    p.status,
+    `${p.progressPct}%`,
+    p.notes || ''
+  ]);
 
-  const cpsData = [
-    ['ID Article', 'ID Chantier', 'Lot BTP', 'N° Article', 'Désignation des Prestations & Travaux', 'Unité', 'Prix Unitaire (MAD)', 'Quantité Prévue', 'Montant Prévu (MAD)', 'Quantité Réalisée', 'Taux Réalisé %', 'Montant Exécuté (MAD)', 'ID المقاول'],
-    ...state.cpsArticles.map(a => [
+  // 2. CPS Articles Data (Bordereau_CPS)
+  const cpsRows = cpsArticles.map(a => {
+    const proj = state.projects.find(p => p.id === a.projectId);
+    return [
       a.id,
+      a.adminId || targetAdminId || '',
       a.projectId,
+      proj?.name || '',
       a.lot,
       a.articleNumber,
       a.designation,
@@ -2519,33 +2520,54 @@ export const syncAllDataToGoogleSheets = async (
       a.totalPlannedPrice,
       a.quantityExecuted,
       `${a.progressPct}%`,
-      a.executedAmount,
-      a.adminId || ''
-    ])
-  ];
+      a.executedAmount
+    ];
+  });
 
-  const workersData = [
-    ['ID Ouvrier', 'Nom & Prénom', 'Spécialité / Métier', 'Type de Rémunération', 'Salaire de Base (MAD)', 'Téléphone', 'N° CIN', 'Statut', 'ID المقاول'],
-    ...state.workers.map(w => [
-      w.id,
-      w.name,
-      w.specialty,
-      w.wageType,
-      w.wageAmount,
-      w.phone,
-      w.cin || '',
-      w.active ? 'Actif' : 'Inactif',
-      w.adminId || ''
-    ])
-  ];
+  // 3. Attendance Data (Pointage_Journalier)
+  const pointageRows = attendance.map(a => {
+    const p = state.projects.find(proj => proj.id === a.projectId);
+    const w = state.workers.find(wor => wor.id === a.workerId);
+    return [
+      a.id,
+      a.adminId || targetAdminId || '',
+      a.date,
+      a.projectId,
+      p?.name || '',
+      a.workerId,
+      w?.name || '',
+      a.status,
+      a.overtimeHours || 0,
+      a.advanceAmount || 0,
+      a.notes || ''
+    ];
+  });
 
-  const purchasesData = [
-    ['ID Achat', 'Date', 'ID Fournisseur', 'ID Chantier', 'Désignation Matériaux', 'Quantité', 'Unité', 'Prix Unitaire (MAD)', 'Montant Total (MAD)', 'Montant Réglé (MAD)', 'Reste Dû / Créance (MAD)', 'N° BL / Facture', 'ID المقاول'],
-    ...state.purchases.map(p => [
+  // 4. Workers & Payroll Data (Paie_Ouvriers)
+  const workersRows = workers.map(w => [
+    w.id,
+    w.adminId || targetAdminId || '',
+    w.name,
+    w.specialty,
+    w.wageType,
+    w.wageAmount,
+    w.phone,
+    w.cin || '',
+    w.active ? 'Actif' : 'Inactif'
+  ]);
+
+  // 5. Purchases Data (Achats_Fournisseurs)
+  const purchasesRows = purchases.map(p => {
+    const proj = state.projects.find(pr => pr.id === p.projectId);
+    const supplier = state.suppliers.find(s => s.id === p.supplierId);
+    return [
       p.id,
+      p.adminId || targetAdminId || '',
       p.date,
       p.supplierId,
+      supplier?.name || '',
       p.projectId,
+      proj?.name || '',
       p.materialName,
       p.quantity,
       p.unit,
@@ -2553,64 +2575,46 @@ export const syncAllDataToGoogleSheets = async (
       p.totalAmount,
       p.paidAmount,
       p.remainingDebt,
-      p.invoiceNumber || '',
-      p.adminId || ''
-    ])
-  ];
+      p.invoiceNumber || ''
+    ];
+  });
 
-  const expensesData = [
-    ['ID Dépense', 'Date', 'Catégorie de Dépense', 'Montant (MAD)', 'ID Chantier', 'Mode de Règlement', 'Bénéficiaire', 'Observations', 'ID المقاول'],
-    ...state.expenses.map(e => [
+  // 6. Expenses Data (Depenses_Chantier)
+  const expensesRows = expenses.map(e => {
+    const proj = state.projects.find(p => p.id === e.projectId);
+    return [
       e.id,
+      e.adminId || targetAdminId || '',
       e.date,
+      e.projectId,
+      proj?.name || '',
       e.category,
       e.amount,
-      e.projectId,
       e.paymentMethod,
       e.recipientName || '',
-      e.notes || '',
-      e.adminId || ''
-    ])
-  ];
+      e.notes || ''
+    ];
+  });
 
-  const clientPaymentsData = [
-    ['ID Règlement', 'Date', 'ID Chantier', 'Tranche / Situation Décompte', 'Montant Reçu (MAD)', 'Mode de Paiement', 'N° Reçu / Chèque', 'ID المقاول'],
-    ...state.clientPayments.map(cp => [
+  // 7. Client Payments Data (Decomptes_Clients)
+  const clientPaymentsRows = clientPayments.map(cp => {
+    const proj = state.projects.find(p => p.id === cp.projectId);
+    return [
       cp.id,
+      cp.adminId || targetAdminId || '',
       cp.date,
       cp.projectId,
+      proj?.name || '',
       cp.milestoneTitle,
       cp.amount,
       cp.paymentMethod,
-      cp.receiptNumber || '',
-      cp.adminId || ''
-    ])
-  ];
+      cp.receiptNumber || ''
+    ];
+  });
 
-  const pointageData = [
-    ['ID Pointage', 'ID المقاول (Admin ID)', 'Date', 'ID Chantier', 'Nom Chantier', 'ID Ouvrier', 'Nom Ouvrier', 'Statut Pointage', 'Heures Sup', 'Avances MAD', 'Notes'],
-    ...state.attendance.map(a => {
-      const p = state.projects.find(proj => proj.id === a.projectId);
-      const w = state.workers.find(wor => wor.id === a.workerId);
-      return [
-        a.id,
-        a.adminId || '',
-        a.date,
-        a.projectId,
-        p?.name || '',
-        a.workerId,
-        w?.name || '',
-        a.status,
-        a.overtimeHours || 0,
-        a.advanceAmount || 0,
-        a.notes || ''
-      ];
-    })
-  ];
-
-  // Batch update all master operational sheets
+  // Helper to clear and write a tab with fallback
   const updateTab = async (sheetName: string, fallbackArabic: string, values: any[][]) => {
-    await fetchWithRetry(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(sheetName)}!A2:Z3000:clear`, {
+    await fetchWithRetry(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(sheetName)}!A2:Z5000:clear`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` }
     }).catch(() => null);
@@ -2622,7 +2626,7 @@ export const syncAllDataToGoogleSheets = async (
     }).catch(() => null);
 
     if (!res || !res.ok) {
-      await fetchWithRetry(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(fallbackArabic)}!A2:Z3000:clear`, {
+      await fetchWithRetry(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(fallbackArabic)}!A2:Z5000:clear`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` }
       }).catch(() => null);
@@ -2636,23 +2640,79 @@ export const syncAllDataToGoogleSheets = async (
     return res ? res.ok : false;
   };
 
-  await updateTab('Chantiers_Projets', 'المشاريع_الأوراش', projectsData);
-  await updateTab('Bordereau_CPS', 'بنود_CPS_والبردورو', cpsData);
-  await updateTab('Pointage_Journalier', 'بوانطاج_العمال', pointageData);
-  await updateTab('Paie_Ouvriers', 'خلاص_العمال_والأجور', workersData);
-  await updateTab('Achats_Fournisseurs', 'المشتريات_والموردين', purchasesData);
-  await updateTab('Depenses_Chantier', 'المصاريف_اليومية', expensesData);
-  await updateTab('Decomptes_Clients', 'دفعات_الزبناء_Décomptes', clientPaymentsData);
+  // Synchronize single operational sheet with contractor merging
+  const syncOperationalSheet = async (
+    sheetName: string,
+    fallbackArabic: string,
+    standardHeaders: string[],
+    newEntityRows: any[][]
+  ) => {
+    let finalRows: any[][] = [];
 
-  // Synchronize Admin_Registry for Super Admin
+    if (!targetAdminId || targetAdminId === 'ALL') {
+      finalRows = [standardHeaders, ...newEntityRows];
+    } else {
+      // Read existing rows to preserve data from other contractors
+      try {
+        const existing = await fetchSheetDataRows(spreadsheetId, sheetName);
+        if (existing && existing.rows && existing.rows.length > 0) {
+          const adminIdx = existing.headers.findIndex(h =>
+            h.includes('ID المقاول') || h.includes('Admin ID') || h.includes('كود المقاول')
+          );
+          const otherRows = existing.rows.filter(r => {
+            if (adminIdx !== -1 && r[adminIdx] !== undefined) {
+              return String(r[adminIdx] || '').trim().toUpperCase() !== targetAdminId.toUpperCase();
+            }
+            return true;
+          });
+          finalRows = [standardHeaders, ...otherRows, ...newEntityRows];
+        } else {
+          finalRows = [standardHeaders, ...newEntityRows];
+        }
+      } catch (readErr) {
+        finalRows = [standardHeaders, ...newEntityRows];
+      }
+    }
+
+    return await updateTab(sheetName, fallbackArabic, finalRows);
+  };
+
+  const projDef = BTP_STANDARD_SHEETS.find(s => s.title === 'Chantiers_Projets')!;
+  const cpsDef = BTP_STANDARD_SHEETS.find(s => s.title === 'Bordereau_CPS')!;
+  const pointageDef = BTP_STANDARD_SHEETS.find(s => s.title === 'Pointage_Journalier')!;
+  const workersDef = BTP_STANDARD_SHEETS.find(s => s.title === 'Paie_Ouvriers')!;
+  const purchasesDef = BTP_STANDARD_SHEETS.find(s => s.title === 'Achats_Fournisseurs')!;
+  const expensesDef = BTP_STANDARD_SHEETS.find(s => s.title === 'Depenses_Chantier')!;
+  const clientPaymentsDef = BTP_STANDARD_SHEETS.find(s => s.title === 'Decomptes_Clients')!;
+
+  await syncOperationalSheet('Chantiers_Projets', 'المشاريع_الأوراش', projDef.headers, projectsRows);
+  await syncOperationalSheet('Bordereau_CPS', 'بنود_CPS_والبردورو', cpsDef.headers, cpsRows);
+  await syncOperationalSheet('Pointage_Journalier', 'بوانطاج_العمال', pointageDef.headers, pointageRows);
+  await syncOperationalSheet('Paie_Ouvriers', 'خلاص_العمال_والأجور', workersDef.headers, workersRows);
+  await syncOperationalSheet('Achats_Fournisseurs', 'المشتريات_والموردين', purchasesDef.headers, purchasesRows);
+  await syncOperationalSheet('Depenses_Chantier', 'المصاريف_اليومية', expensesDef.headers, expensesRows);
+  await syncOperationalSheet('Decomptes_Clients', 'دفعات_الزبناء_Décomptes', clientPaymentsDef.headers, clientPaymentsRows);
+
+  // Synchronize Admin_Registry
   if (state.adminAccounts && state.adminAccounts.length > 0) {
-    await pushAdminsToMasterSheet(spreadsheetId, state.adminAccounts);
+    if (!targetAdminId || targetAdminId === 'ALL') {
+      await pushAdminsToMasterSheet(spreadsheetId, state.adminAccounts).catch(e => console.warn('pushAdmins warning:', e));
+    } else {
+      const matchedAdmin = state.adminAccounts.find(a => a.id.toUpperCase() === targetAdminId.toUpperCase()) || state.currentAdmin;
+      if (matchedAdmin) {
+        await saveAdminToRegistrySheet(spreadsheetId, matchedAdmin).catch(e => console.warn('saveAdmin warning:', e));
+      }
+    }
   }
+
+  const contractorMsg = targetAdminId && targetAdminId !== 'ALL'
+    ? `تمت المزامنة السحابية بنجاح: تم حفظ وتحديث بيانات مقاولتك (${targetAdminId}) في أوراق Google Sheets المركزية (${totalRows} سجلاً عبر Chantiers_Projets, Paie_Ouvriers...).`
+    : `تمت مزامنة المنظومة بنجاح في ملف Google Sheets المركزي الموحد (${totalRows} سجلاً عبر كافة الأوراق).`;
 
   return {
     success: true,
     rowsCount: totalRows,
-    message: `تمت مزامنة المنظومة بنجاح في ملف Google Sheets المركزي الموحد (${totalRows} سجلاً عبر كافة الأوراق).`
+    message: contractorMsg
   };
 };
 
