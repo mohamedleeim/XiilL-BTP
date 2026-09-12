@@ -3,7 +3,10 @@ import { useApp } from '../../context/AppContext';
 import { AlertTriangle, FileSpreadsheet, ArrowLeft, RefreshCw, CheckCircle2 } from 'lucide-react';
 
 export const SheetAuditAlertBanner: React.FC = () => {
-  const { auditReport, openAuditModal, runMasterSheetAudit, isAuditing } = useApp();
+  const { auditReport, openAuditModal, runMasterSheetAudit, isAuditing, isPlatformSuperAdmin } = useApp();
+
+  // تنبيهات فحص ملف Google Sheets المركزي ورؤوس الأعمدة تظهر فقط وحصرياً لسوبر أدمين
+  if (!isPlatformSuperAdmin) return null;
 
   if (!auditReport || !auditReport.hasDiscrepancies) return null;
 

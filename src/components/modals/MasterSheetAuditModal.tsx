@@ -27,7 +27,8 @@ export const MasterSheetAuditModal: React.FC = () => {
     runMasterSheetAudit,
     applySheetAuditChanges,
     rebuildUnifiedMasterStructure,
-    state
+    state,
+    isPlatformSuperAdmin
   } = useApp();
 
   const [isApplying, setIsApplying] = useState(false);
@@ -35,7 +36,8 @@ export const MasterSheetAuditModal: React.FC = () => {
   const [actionFeedback, setActionFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'columns' | 'data' | 'legacy'>('overview');
 
-  if (!isAuditModalOpen) return null;
+  // نافذة فحص ومطابقة وتحديث الشيت المركزي متاحة حصرياً لسوبر أدمين
+  if (!isPlatformSuperAdmin || !isAuditModalOpen) return null;
 
   const handleApplyChanges = async () => {
     setIsApplying(true);

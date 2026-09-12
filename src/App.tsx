@@ -143,11 +143,13 @@ const MainContent: React.FC = () => {
       {/* Top Header */}
       <Header />
 
-      {/* Sheet Verification & Bidirectional Audit Alert Banner */}
-      <SheetAuditAlertBanner />
-
-      {/* Master Sheet Audit & Bidirectional Inspection Modal */}
-      <MasterSheetAuditModal />
+      {/* Sheet Verification & Bidirectional Audit Alert Banner (حصر الظهور للسوبر أدمين فقط) */}
+      {isPlatformSuperAdmin && (
+        <>
+          <SheetAuditAlertBanner />
+          <MasterSheetAuditModal />
+        </>
+      )}
 
       {/* Offline sync status notice */}
       <OfflineBanner />

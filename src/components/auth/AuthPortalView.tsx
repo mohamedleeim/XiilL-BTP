@@ -18,8 +18,6 @@ import {
   EyeOff
 } from 'lucide-react';
 import { SUPER_ADMIN_EMAIL, SUPER_ADMIN_MASTER_KEY } from '../../services/googleWorkspace';
-import { SheetAuditAlertBanner } from '../common/SheetAuditAlertBanner';
-import { MasterSheetAuditModal } from '../modals/MasterSheetAuditModal';
 
 export const AuthPortalView: React.FC = () => {
   const {
@@ -288,12 +286,6 @@ export const AuthPortalView: React.FC = () => {
           </div>
         </div>
       </header>
-
-      {/* Real-time Google Sheet Audit Discrepancies Alert */}
-      <SheetAuditAlertBanner />
-
-      {/* Modal for Sheet Inspection and Acceptance of Changes */}
-      <MasterSheetAuditModal />
 
       {/* Main Form Center */}
       <main className="flex-1 flex items-center justify-center p-4 sm:p-6 my-4">
